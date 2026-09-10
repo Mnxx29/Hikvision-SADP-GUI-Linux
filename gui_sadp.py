@@ -572,13 +572,14 @@ class SADPGui(QMainWindow):
         self.status_label = QLabel("Presiona 'Refresh' para escanear la red")
         self.left_layout.addWidget(self.status_label)
 
-        # 4. Tabla de dispositivos (8 columnas incluyendo el checkbox)
+        # 4. Tabla de dispositivos (9 columnas incluyendo el checkbox y el Alias)
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(8)
+        self.tabla.setColumnCount(9)
         self.tabla.setHorizontalHeaderLabels([
             "", 
             "Dirección IP", 
             "Dirección MAC", 
+            "Alias",
             "Tipo de Dispositivo", 
             "Estado", 
             "Puerto", 
@@ -596,10 +597,11 @@ class SADPGui(QMainWindow):
         self.tabla.setSelectionBehavior(self.tabla.SelectionBehavior.SelectRows)
         self.tabla.cellClicked.connect(self.seleccionar_fila)
         self.tabla.cellDoubleClicked.connect(self.doble_clic_celda)
+        self.tabla.cellChanged.connect(self.alias_celda_cambiada)
         
         # Restaurar estado del encabezado si existe
         try:
-            state = self.settings.value("headerStateV2")
+            state = self.settings.value("headerStateV3")
             if state is not None:
                 header.restoreState(state)
         except Exception:
@@ -607,8 +609,8 @@ class SADPGui(QMainWindow):
 
         # Restaurar columna/orden de ordenación
         try:
-            sort_col = self.settings.value("sortColumnV2")
-            sort_order = self.settings.value("sortOrderV2")
+            sort_col = self.settings.value("sortColumnV3")
+            sort_order = self.settings.value("sortOrderV3")
             if sort_col is not None:
                 sort_col = int(sort_col)
                 sort_order = int(sort_order) if sort_order is not None else int(Qt.SortOrder.AscendingOrder)
@@ -690,6 +692,14 @@ class SADPGui(QMainWindow):
         self.scroll_layout.addWidget(self.chk_hik)
 
         # Campos de texto individuales
+        self.scroll_layout.addWidget(QLabel("Alias / Nombre del equipo:"))
+        self.txt_alias = QLineEdit()
+        self.txt_alias.setPlaceholderText("Ej. NVR ponton, J104 B ID 106...")
+        self.txt_alias.setToolTip("Asigna un nombre personalizado para identificar rápidamente este equipo")
+        self.txt_alias.setEnabled(False)
+        self.txt_alias.textChanged.connect(self.guardar_alias_panel)
+        self.scroll_layout.addWidget(self.txt_alias)
+
         self.scroll_layout.addWidget(QLabel("Device Serial No.:"))
         self.txt_serial = QLineEdit()
         self.txt_serial.setReadOnly(True)
@@ -821,6 +831,7 @@ class SADPGui(QMainWindow):
         self.lbl_count.setText("Total number of online devices: <b style='color:#0F83E6; font-size:16px;'>0</b>")
         
         # Limpiar formulario
+        self.txt_alias.clear()
         self.txt_serial.clear()
         self.txt_ip.clear()
         self.txt_port.clear()
@@ -836,6 +847,7 @@ class SADPGui(QMainWindow):
         self.chk_hik.setChecked(False)
         
         # Deshabilitar controles del panel
+        self.txt_alias.setEnabled(False)
         self.txt_ip.setEnabled(False)
         self.txt_port.setEnabled(False)
         self.txt_sdk_port.setEnabled(False)
@@ -865,7 +877,8 @@ class SADPGui(QMainWindow):
             self.status_label.setText("⚠️ No se encontraron dispositivos Hikvision en la red")
             return
         
-        # Desactivar ordenación mientras se insertan filas para evitar reordenados intermedios
+        # Desactivar señales y ordenación mientras se insertan filas
+        self.tabla.blockSignals(True)
         self.tabla.setSortingEnabled(False)
         for idx, disp in enumerate(dispositivos):
             row_position = self.tabla.rowCount()
@@ -890,33 +903,41 @@ class SADPGui(QMainWindow):
             mac_key = mac_text.replace(':', '').replace('-', '').lower()
             self.tabla.setItem(row_position, 2, SortableItem(mac_text, sort_key=mac_key))
 
-            # Tipo (columna 3)
+            # Alias / Nombre (columna 3) - Cargar alias guardado por MAC
+            alias_guardado = self.settings.value(f"alias/{mac_text.upper()}", disp.get('nombre', ''))
+            disp['alias'] = str(alias_guardado) if alias_guardado is not None else ""
+            alias_item = SortableItem(disp['alias'], sort_key=disp['alias'])
+            alias_item.setFlags(alias_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.tabla.setItem(row_position, 3, alias_item)
+
+            # Tipo (columna 4)
             tipo_raw = disp.get('tipo', '')
             serial_raw = disp.get('serial', '')
             tipo_text = traducir_tipo_dispositivo(tipo_raw, serial_raw)
-            self.tabla.setItem(row_position, 3, SortableItem(tipo_text, sort_key=tipo_text))
+            self.tabla.setItem(row_position, 4, SortableItem(tipo_text, sort_key=tipo_text))
 
-            # Estado (columna 4)
+            # Estado (columna 5)
             estado_text = disp.get('estado', '')
-            self.tabla.setItem(row_position, 4, SortableItem(estado_text, sort_key=estado_text))
+            self.tabla.setItem(row_position, 5, SortableItem(estado_text, sort_key=estado_text))
 
-            # Puerto (columna 5)
+            # Puerto (columna 6)
             puerto_text = disp.get('puerto', '')
             try:
                 puerto_key = int(puerto_text)
             except Exception:
                 puerto_key = puerto_text
-            self.tabla.setItem(row_position, 5, SortableItem(puerto_text, sort_key=puerto_key))
+            self.tabla.setItem(row_position, 6, SortableItem(puerto_text, sort_key=puerto_key))
 
-            # Serial (columna 6)
+            # Serial (columna 7)
             serial_text = disp.get('serial', '')
-            self.tabla.setItem(row_position, 6, SortableItem(serial_text, sort_key=serial_text))
+            self.tabla.setItem(row_position, 7, SortableItem(serial_text, sort_key=serial_text))
 
-            # Version (columna 7)
+            # Version (columna 8)
             version_text = disp.get('version', '')
-            self.tabla.setItem(row_position, 7, SortableItem(version_text, sort_key=version_text))
+            self.tabla.setItem(row_position, 8, SortableItem(version_text, sort_key=version_text))
         
-        # Volver a activar ordenación después de insertar todas las filas
+        # Volver a activar señales y ordenación después de insertar todas las filas
+        self.tabla.blockSignals(False)
         self.tabla.setSortingEnabled(True)
         self.status_label.setText(f"✅ Se encontraron {len(dispositivos)} dispositivo(s)")
 
@@ -924,14 +945,14 @@ class SADPGui(QMainWindow):
         try:
             header = self.tabla.horizontalHeader()
             state = header.saveState()
-            self.settings.setValue("headerStateV2", state)
+            self.settings.setValue("headerStateV3", state)
         except Exception:
             pass
 
     def save_sort_indicator(self, index: int, order: Qt.SortOrder):
         try:
-            self.settings.setValue("sortColumnV2", int(index))
-            self.settings.setValue("sortOrderV2", int(order))
+            self.settings.setValue("sortColumnV3", int(index))
+            self.settings.setValue("sortOrderV3", int(order))
         except Exception:
             pass
 
@@ -942,6 +963,42 @@ class SADPGui(QMainWindow):
         except Exception:
             pass
         super().closeEvent(event)
+
+    def alias_celda_cambiada(self, row, column):
+        """Guardar alias cuando se edita directamente la celda de la columna Alias (col 3)"""
+        if column != 3:
+            return
+        mac_item = self.tabla.item(row, 2)
+        alias_item = self.tabla.item(row, 3)
+        if mac_item and alias_item:
+            mac = mac_item.text().strip()
+            nuevo_alias = alias_item.text().strip()
+            if mac:
+                self.settings.setValue(f"alias/{mac.upper()}", nuevo_alias)
+                # Actualizar el panel lateral si corresponde al dispositivo seleccionado
+                if getattr(self, 'selected_device_mac', '').upper() == mac.upper():
+                    self.txt_alias.blockSignals(True)
+                    self.txt_alias.setText(nuevo_alias)
+                    self.txt_alias.blockSignals(False)
+
+    def guardar_alias_panel(self, nuevo_alias):
+        """Guardar alias cuando se edita el campo 'Alias' en el panel lateral"""
+        mac = getattr(self, 'selected_device_mac', '').strip()
+        if not mac:
+            return
+        
+        self.settings.setValue(f"alias/{mac.upper()}", nuevo_alias.strip())
+        
+        # Actualizar celda en la tabla
+        self.tabla.blockSignals(True)
+        for r in range(self.tabla.rowCount()):
+            mac_item = self.tabla.item(r, 2)
+            if mac_item and mac_item.text().strip().upper() == mac.upper():
+                alias_item = self.tabla.item(r, 3)
+                if alias_item:
+                    alias_item.setText(nuevo_alias)
+                break
+        self.tabla.blockSignals(False)
 
     def mostrar_error(self, mensaje):
         """Muestra un error"""
@@ -973,8 +1030,9 @@ class SADPGui(QMainWindow):
         # Cargar datos desde la fila seleccionada
         ip = self.tabla.item(row, 1).text() if self.tabla.item(row, 1) else ""
         mac = self.tabla.item(row, 2).text() if self.tabla.item(row, 2) else ""
-        puerto = self.tabla.item(row, 5).text() if self.tabla.item(row, 5) else "8000"
-        serial = self.tabla.item(row, 6).text() if self.tabla.item(row, 6) else ""
+        alias = self.tabla.item(row, 3).text() if self.tabla.item(row, 3) else ""
+        puerto = self.tabla.item(row, 6).text() if self.tabla.item(row, 6) else "8000"
+        serial = self.tabla.item(row, 7).text() if self.tabla.item(row, 7) else ""
 
         # Guardar MAC e IP seleccionadas autoritativas
         self.selected_device_mac = mac
@@ -988,6 +1046,9 @@ class SADPGui(QMainWindow):
                 break
 
         # Poblar formulario lateral
+        self.txt_alias.blockSignals(True)
+        self.txt_alias.setText(alias)
+        self.txt_alias.blockSignals(False)
         self.txt_serial.setText(serial)
         self.txt_ip.setText(ip)
         
@@ -1014,6 +1075,9 @@ class SADPGui(QMainWindow):
         self.txt_ipv6_gw.setText("")
         self.txt_ipv6_prefix.setText("64")
         self.txt_password.clear()
+        
+        # Habilitar controles del formulario
+        self.txt_alias.setEnabled(True)
         
         # Habilitar controles del formulario
         self.txt_ip.setEnabled(True)
@@ -1220,13 +1284,16 @@ class SADPGui(QMainWindow):
                 return
 
             fieldnames = [
-                'ip', 'mac', 'tipo', 'estado', 'puerto', 
+                'ip', 'mac', 'alias', 'tipo', 'estado', 'puerto', 
                 'http_port', 'serial', 'version', 'subnet', 'gateway', 'dhcp'
             ]
 
             rows_to_write = []
             for disp in self.dispositivos:
                 row = dict(disp)
+                mac_raw = row.get('mac', '')
+                alias_val = self.settings.value(f"alias/{mac_raw.upper()}", row.get('alias', ''))
+                row['alias'] = str(alias_val) if alias_val is not None else ""
                 # Traducir el tipo para que sea legible en el CSV
                 tipo_raw = row.get('tipo', '')
                 serial_raw = row.get('serial', '')

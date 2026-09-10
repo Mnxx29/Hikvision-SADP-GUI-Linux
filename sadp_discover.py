@@ -149,9 +149,12 @@ def parse_response(data, addr, debug=False):
         else:
             estado = activated
 
+        name = get('DeviceName') or get('DeviceDescription') or get('HostName') or get('CustomizedInfo') or get('DevName') or ''
+
         device = {
             'ip': ip,
             'mac': mac,
+            'nombre': name,
             'tipo': get('DeviceType'),
             'estado': estado,
             'puerto': get('CommandPort') or get('Port', '8000'),
@@ -164,7 +167,7 @@ def parse_response(data, addr, debug=False):
         }
 
         if debug:
-            print(f"  [PARSE] ✅ {ip} ({mac}) - {device['serial']}")
+            print(f"  [PARSE] OK {ip} ({mac}) - Name: '{name}' - {device['serial']}")
 
         return device
 
@@ -387,7 +390,7 @@ def raw_capture(timeout=10):
         try:
             data, addr = sock.recvfrom(65535)
             count += 1
-            print(f"═══ Paquete #{count} de {addr[0]}:{addr[1]} ({len(data)} bytes) ═══")
+            print(f"=== Paquete #{count} de {addr[0]}:{addr[1]} ({len(data)} bytes) ===")
             xml_idx = data.find(b'<?xml')
             if xml_idx >= 0:
                 if xml_idx > 0:
@@ -449,7 +452,7 @@ if __name__ == '__main__':
         if devs:
             print(f"{'IP':18s} {'MAC':20s} {'Tipo':12s} {'Estado':10s} "
                   f"{'Puerto':8s} {'Serial'}")
-            print("─" * 90)
+            print("-" * 90)
             for d in devs:
                 print(f"{d['ip']:18s} {d['mac']:20s} {d['tipo']:12s} "
                       f"{d['estado']:10s} {d['puerto']:8s} {d['serial']}")
