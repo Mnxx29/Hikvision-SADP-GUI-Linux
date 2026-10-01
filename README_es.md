@@ -53,7 +53,7 @@ Consulte la [Guía Técnica de Uso y Red](GUIA.md) para especificaciones del pro
 ## Contribuciones y Feedback
 
 ¡Los reportes de errores, sugerencias y contribuciones son bienvenidos!
-Si encuentras algún problema o tienes alguna idea de mejora, abre un *Issue* o envía un *Pull Request* en [GitHub](https://github.com/Mnxx29/hikvision-sadp-gui-linux).
+Si encuentras algún problema o tienes alguna idea de mejora, abre un *Issue* o envía un *Pull Request* en [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
 
 ## Licencia
 

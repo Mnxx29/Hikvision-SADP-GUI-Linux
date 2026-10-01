@@ -72,8 +72,8 @@ Clone the repository and run the automated production setup script:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Mnxx29/hikvision-sadp-gui-linux.git
-cd hikvision-sadp-gui-linux
+git clone https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux.git
+cd Hikvision-SADP-GUI-Linux
 
 # Run the installer (do not run with sudo)
 bash setup-produccion.sh
@@ -114,7 +114,7 @@ For an in-depth protocol breakdown and manual network setup, refer to the [Techn
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome!
-Feel free to open an issue or submit a pull request on [GitHub](https://github.com/Mnxx29/hikvision-sadp-gui-linux).
+Feel free to open an issue or submit a pull request on [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
 
 ---
 
