@@ -18,8 +18,9 @@ Hikvision does not provide an official native **SADP (Search Active Devices Prot
 
 **Hikvision SADP GUI Linux** solves this by delivering a native PyQt6 desktop application designed specifically for Linux. It directly implements the SADP protocol to scan across multiple network interfaces, detect devices even on different subnets, configure IP addresses, and unbind devices from Hik-Connect accounts.
 
-<!-- Add your application screenshot here -->
-<!-- ![Hikvision SADP Linux GUI Screenshot](docs/screenshot.png) -->
+<p align="center">
+  <img src="docs/GUI.png" alt="Hikvision SADP Linux GUI Screenshot" width="850">
+</p>
 
 ---
 

@@ -4,6 +4,10 @@
 
 Aplicación gráfica nativa para Linux para el descubrimiento, diagnóstico y gestión de red de cámaras IP y dispositivos Hikvision en redes locales y subredes múltiples.
 
+<p align="center">
+  <img src="docs/GUI.png" alt="Captura de pantalla SADP Tool para Linux" width="850">
+</p>
+
 ## Instalación
 
 ```bash
@@ -45,6 +49,11 @@ El instalador genera el comando global `sadp-gui` en `~/.local/bin/` y crea el a
 ## Documentación detallada
 
 Consulte la [Guía Técnica de Uso y Red](GUIA.md) para especificaciones del protocolo, troubleshooting y configuración avanzada.
+
+## Contribuciones y Feedback
+
+¡Los reportes de errores, sugerencias y contribuciones son bienvenidos!
+Si encuentras algún problema o tienes alguna idea de mejora, abre un *Issue* o envía un *Pull Request* en [GitHub](https://github.com/Mnxx29/hikvision-sadp-gui-linux).
 
 ## Licencia
 
