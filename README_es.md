@@ -55,6 +55,36 @@ Consulte la [Guía Técnica de Uso y Red](GUIA.md) para especificaciones del pro
 ¡Los reportes de errores, sugerencias y contribuciones son bienvenidos!
 Si encuentras algún problema o tienes alguna idea de mejora, abre un *Issue* o envía un *Pull Request* en [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
 
+---
+
+## Preguntas Frecuentes (FAQ)
+
+### ¿Existe una versión oficial de SADP para Linux?
+No. Hikvision únicamente ofrece el software oficial SADP (Search Active Devices Protocol) para Microsoft Windows. Este proyecto fue desarrollado de forma comunitaria e independiente para brindar una alternativa gráfica nativa y completa para Linux.
+
+### ¿Puedo ejecutar SADP en Linux sin Wine ni máquinas virtuales?
+¡Sí! Esta aplicación corre de manera 100% nativa sobre Linux utilizando Python 3 y PyQt6. Se conecta directamente a los sockets UDP multicast (`239.255.255.250:37020`), eliminando la necesidad de Wine, emuladores o máquinas virtuales de Windows.
+
+### ¿Cómo detecta cámaras sin configurar en subredes distintas (192.168.1.64)?
+Los dispositivos nuevos de Hikvision vienen de fábrica con la IP `192.168.1.64`. Por defecto, el kernel de Linux descarta paquetes asimétricos provenientes de otras subredes. El instalador configura el filtrado de ruta inversa (`rp_filter=2`) y rutas multicast en todas las interfaces de red para que las respuestas SADP atraviesen subredes sin inconvenientes.
+
+### ¿Qué distribuciones de Linux son compatibles?
+Probado y verificado en Ubuntu (20.04 LTS, 22.04 LTS, 24.04 LTS), Debian (11 y 12), Linux Mint y derivados. También es compatible con Arch Linux, Fedora y openSUSE con `python3-pyqt6` instalado.
+
+### ¿Funciona con dispositivos OEM de Hikvision?
+Sí. Marcas como Annke, LTS, Lorex y otras utilizan hardware y firmware OEM de Hikvision. Si el dispositivo responde al protocolo SADP por el puerto 37020, esta aplicación lo detectará e identificará.
+
+---
+
+## Descargo de Responsabilidad (Disclaimer)
+
+Este es un proyecto de código abierto independiente desarrollado por la comunidad. **No** está afiliado, patrocinado, autorizado ni respaldado por **Hangzhou Hikvision Digital Technology Co., Ltd.**
+
+"Hikvision", "EZVIZ", "Hik-Connect" y "SADP" son marcas comerciales registradas de sus respectivos propietarios. Todos los nombres de productos, marcas y logotipos se utilizan exclusivamente con fines de identificación y compatibilidad técnica bajo el principio de uso legítimo (*Fair Use*).
+
+---
+
 ## Licencia
 
 MIT License — consulte el archivo [LICENSE](LICENSE) para más detalles.
+

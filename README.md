@@ -118,6 +118,34 @@ Feel free to open an issue or submit a pull request on [GitHub](https://github.c
 
 ---
 
+## Frequently Asked Questions (FAQ)
+
+### Is there an official Hikvision SADP tool for Linux?
+No. Hikvision only provides the official SADP (Search Active Devices Protocol) software for Microsoft Windows. This project was developed from scratch to offer a native Linux equivalent with an intuitive desktop GUI.
+
+### Can I run Hikvision SADP on Linux without Wine or Virtual Machines?
+Yes! This application runs natively on Linux using Python 3 and PyQt6. It connects directly to raw UDP multicast sockets (`239.255.255.250:37020`), eliminating the need for Wine, emulators, or Windows virtual machines.
+
+### How does cross-subnet discovery work for unconfigured cameras (192.168.1.64)?
+Brand-new Hikvision devices default to the `192.168.1.64` IP address. Linux kernels typically drop asymmetric packets from other subnets by default. The setup script adjusts reverse path filtering (`rp_filter=2`) and binds route paths across all network interfaces, allowing SADP multicast probes and responses to cross subnet boundaries seamlessly.
+
+### Which Linux distributions are supported?
+The tool is fully tested on Ubuntu (20.04 LTS, 22.04 LTS, 24.04 LTS), Debian (11 / 12), Linux Mint, and other Debian-based operating systems. It also runs on Arch Linux, Fedora, and openSUSE with `python3-pyqt6` installed.
+
+### Does this tool work with OEM Hikvision equipment?
+Yes. Many brands (such as Annke, LTS, Lorex, Swann, and others) use Hikvision OEM hardware and firmware. If the device communicates over port 37020 using the SADP protocol, this tool will detect and list it.
+
+---
+
+## Disclaimer
+
+This is an independent open-source community project. It is **not** affiliated with, sponsored by, authorized by, or endorsed by **Hangzhou Hikvision Digital Technology Co., Ltd.**
+
+"Hikvision", "EZVIZ", "Hik-Connect", and "SADP" are registered trademarks of their respective owners. All product names, logos, and brands are used for identification and interoperability purposes only under fair use.
+
+---
+
 ## License
 
 This project is open-source software licensed under the [MIT License](LICENSE).
+
