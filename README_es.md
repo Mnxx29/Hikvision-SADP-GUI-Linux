@@ -30,11 +30,13 @@ sadp-gui
 - **Motor de descubrimiento nativo (Python)**: Implementación directa del protocolo SADP vía UDP multicast (`239.255.255.250:37020`) y broadcast, enlazada directamente al puerto 37020 para garantizar la recepción de respuestas a través de reglas de firewall.
 - **Soporte multi-interfaz y VLAN**: Envío de sondas en todas las interfaces de red activas de forma simultánea.
 - **Soporte fuera de subred**: Detección de dispositivos sin importar si se encuentran en un segmento IP distinto al del equipo local, mediante configuración del kernel (`rp_filter=2`).
-- **Modificación de parámetros de red**: Cambio de IP, máscara de subred, puerta de enlace, puertos HTTP/SDK y DHCP mediante firma de contraseña de administrador.
-- **Desvinculación Hik-Connect (Unbind)**: Liberación de equipos asociados a cuentas de usuario mediante comandos de control SADP.
 - **Traducción de tipo de dispositivo**: Identificación de códigos numéricos SADP y prefijos de modelo (`Cámara IP`, `Cámara PTZ`, `NVR`, `DVR`, `Videoportero`, `Switch PoE`).
 - **Exportación CSV completa**: Generación de reportes CSV estructurados con la totalidad de atributos de red detectados (`ip`, `mac`, `tipo`, `estado`, `puerto`, `http_port`, `serial`, `version`, `subnet`, `gateway`, `dhcp`).
 - **Herramienta de diagnóstico integrada**: Script `diagnostico.sh` para auditoría de sockets, reglas UFW, permisos `cap_net_raw`, capturas `tcpdump` y pruebas del protocolo.
+
+> 🚧 **Próximas funciones (En desarrollo activo)**:
+> - Modificación de parámetros de red (IP, máscara, puerta de enlace, DHCP) desde el panel lateral derecho de la aplicación.
+> - Desvinculación de cuentas Hik-Connect (Unbind).
 
 ## Integración con el sistema
 
