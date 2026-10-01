@@ -8,9 +8,11 @@ import shutil
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTableWidget, 
                              QTableWidgetItem, QHeaderView, QMessageBox, QLabel, QProgressBar,
-                             QFrame, QScrollArea, QCheckBox, QLineEdit, QFileDialog)
+                             QFrame, QScrollArea, QCheckBox, QLineEdit, QFileDialog, QComboBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
 from PyQt6.QtGui import QFont
+
+from i18n import t, translate_device_type, traducir_tipo_dispositivo
 
 
 class SortableItem(QTableWidgetItem):
@@ -26,62 +28,7 @@ class SortableItem(QTableWidgetItem):
         except Exception:
             return super().__lt__(other)
 
-def traducir_tipo_dispositivo(tipo_code: str, serial_model: str = "") -> str:
-    """Traduce códigos numéricos SADP y prefijos de modelo Hikvision a nombres comprensibles en español."""
-    tipo_str = str(tipo_code).strip()
-    model_upper = str(serial_model).upper()
-    
-    # 1. Mapa de códigos numéricos Hikvision SADP conocidos
-    MAPA_CODIGOS = {
-        # Cámaras IP (DS-2CD...)
-        "141938": "Cámara IP",
-        "147479": "Cámara IP",
-        "141904": "Cámara IP",
-        "141937": "Cámara IP",
-        "141939": "Cámara IP",
-        "141950": "Cámara IP",
-        "147456": "Cámara IP",
-        # Cámaras PTZ / Speed Dome (DS-2SE, DS-2DE...)
-        "196607": "Cámara PTZ",
-        "196608": "Cámara PTZ",
-        "196609": "Cámara PTZ",
-        # NVR (DS-96, DS-76...)
-        "46877": "NVR",
-        "46848": "NVR",
-        "46849": "NVR",
-        "46876": "NVR",
-        "46878": "NVR",
-        # DVR (DS-72, DS-71...)
-        "42240": "DVR",
-        "42241": "DVR",
-        "42242": "DVR",
-        # Videoporteros / Control de Acceso
-        "262144": "Videoportero",
-        "262145": "Videoportero",
-        # Switches PoE
-        "393216": "Switch PoE",
-    }
-    
-    if tipo_str in MAPA_CODIGOS:
-        return f"{MAPA_CODIGOS[tipo_str]} ({tipo_str})"
-        
-    # 2. Inferencia inteligente por prefijo de modelo/serial
-    if "DS-2SE" in model_upper or "DS-2DE" in model_upper or "DS-2DF" in model_upper or "PTZ" in model_upper:
-        return f"Cámara PTZ ({tipo_str})" if tipo_str.isdigit() else "Cámara PTZ"
-    elif "DS-2CD" in model_upper or "DS-2CV" in model_upper or "IPC" in model_upper:
-        return f"Cámara IP ({tipo_str})" if tipo_str.isdigit() else "Cámara IP"
-    elif "DS-96" in model_upper or "DS-76" in model_upper or "DS-77" in model_upper or "NVR" in model_upper:
-        return f"NVR ({tipo_str})" if tipo_str.isdigit() else "NVR"
-    elif "DS-71" in model_upper or "DS-72" in model_upper or "DS-73" in model_upper or "DVR" in model_upper:
-        return f"DVR ({tipo_str})" if tipo_str.isdigit() else "DVR"
-    elif "DS-KD" in model_upper or "DS-KV" in model_upper or "DS-KH" in model_upper:
-        return f"Videoportero ({tipo_str})" if tipo_str.isdigit() else "Videoportero"
-    elif "DS-3E" in model_upper:
-        return f"Switch PoE ({tipo_str})" if tipo_str.isdigit() else "Switch PoE"
 
-    # Si es numérico sin mapeo específico
-    if tipo_str.isdigit():
-        return f"Dispositivo ({tipo_str})"
 def obtener_binario_path() -> str:
     """Busca el ejecutable SADP en el PATH y en rutas conocidas del sistema."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -387,10 +334,14 @@ class ScanThread(QThread):
 class SADPGui(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SADP Tool para Linux - Hikvision")
-        self.setGeometry(100, 100, 1100, 650)
+        self.setGeometry(100, 100, 1120, 650)
         self.scan_thread = None
         self.settings = QSettings("sadp", "sadp-gui-v2")
+        
+        # Cargar idioma preferido (inglés por defecto desde la raíz)
+        self.current_lang = str(self.settings.value("appLanguage", "en"))
+        if self.current_lang not in ("en", "es"):
+            self.current_lang = "en"
         
         # --- Aplicar QSS Estilos Premium ---
         self.setStyleSheet("""
@@ -424,6 +375,28 @@ class SADPGui(QMainWindow):
                 font-size: 12px;
                 color: #374151;
                 spacing: 5px;
+            }
+            QComboBox {
+                background-color: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                border-radius: 4px;
+                padding: 4px 10px;
+                color: #374151;
+                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
+                font-size: 12px;
+            }
+            QComboBox:hover {
+                border-color: #9CA3AF;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 18px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                selection-background-color: #E0F2FE;
+                selection-color: #0369A1;
             }
             QPushButton.btn-coral {
                 background-color: #E58B8B;
@@ -516,30 +489,39 @@ class SADPGui(QMainWindow):
         # 1. Barra de herramientas superior (Estilo SADP original)
         self.top_layout = QHBoxLayout()
         
-        # Etiqueta destacada en azul
-        self.lbl_count = QLabel("Total number of online devices: <b style='color:#0F83E6; font-size:16px;'>0</b>")
+        # Etiqueta de conteo
+        self.lbl_count = QLabel()
         self.top_layout.addWidget(self.lbl_count)
         
         self.top_layout.addStretch()
 
-        # Botón Unbind (Coral, deshabilitado por defecto)
-        self.btn_unbind = QPushButton("Unbind")
+        # Selector de Idioma (Language switcher)
+        self.combo_lang = QComboBox()
+        self.combo_lang.addItem("🌐 English", "en")
+        self.combo_lang.addItem("🌐 Español", "es")
+        self.combo_lang.setMinimumHeight(35)
+        self.combo_lang.setCurrentIndex(0 if self.current_lang == "en" else 1)
+        self.combo_lang.currentIndexChanged.connect(self.cambiar_idioma)
+        self.top_layout.addWidget(self.combo_lang)
+
+        # Botón Unbind
+        self.btn_unbind = QPushButton()
         self.btn_unbind.setProperty("class", "btn-coral")
         self.btn_unbind.setMinimumHeight(35)
         self.btn_unbind.setEnabled(False)
         self.btn_unbind.clicked.connect(self.desvincular_dispositivo)
         self.top_layout.addWidget(self.btn_unbind)
 
-        # Botón Export (Coral, deshabilitado por defecto)
-        self.btn_export = QPushButton("Export")
+        # Botón Export
+        self.btn_export = QPushButton()
         self.btn_export.setProperty("class", "btn-coral")
         self.btn_export.setMinimumHeight(35)
         self.btn_export.setEnabled(False)
         self.btn_export.clicked.connect(self.exportar_csv)
         self.top_layout.addWidget(self.btn_export)
 
-        # Botón Refresh (Outline, siempre habilitado)
-        self.btn_scan = QPushButton("Refresh")
+        # Botón Refresh
+        self.btn_scan = QPushButton()
         self.btn_scan.setProperty("class", "btn-outline")
         self.btn_scan.setMinimumHeight(35)
         self.btn_scan.clicked.connect(self.ejecutar_escaneo)
@@ -547,14 +529,13 @@ class SADPGui(QMainWindow):
 
         # Entrada de Filtrado (Filter)
         self.txt_filter = QLineEdit()
-        self.txt_filter.setPlaceholderText("Filter")
         self.txt_filter.setMaximumWidth(160)
         self.txt_filter.setMinimumHeight(30)
         self.txt_filter.textChanged.connect(self.filtrar_tabla)
         self.top_layout.addWidget(self.txt_filter)
 
-        # Botón Toggle Panel (Outline, para colapsar/desplegar el panel)
-        self.btn_toggle_panel = QPushButton("✏️ Modificar Red")
+        # Botón Toggle Panel (Modificar Red)
+        self.btn_toggle_panel = QPushButton()
         self.btn_toggle_panel.setProperty("class", "btn-outline")
         self.btn_toggle_panel.setMinimumHeight(35)
         self.btn_toggle_panel.clicked.connect(self.toggle_panel)
@@ -569,22 +550,12 @@ class SADPGui(QMainWindow):
         self.left_layout.addWidget(self.progress_bar)
 
         # 3. Etiqueta de estado
-        self.status_label = QLabel("Presiona 'Refresh' para escanear la red")
+        self.status_label = QLabel()
         self.left_layout.addWidget(self.status_label)
 
-        # 4. Tabla de dispositivos (8 columnas, sin número de serie)
+        # 4. Tabla de dispositivos (8 columnas)
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(8)
-        self.tabla.setHorizontalHeaderLabels([
-            "", 
-            "Dirección IP", 
-            "Dirección MAC", 
-            "Modelo",
-            "Tipo de Dispositivo", 
-            "Estado", 
-            "Puerto", 
-            "Versión"
-        ])
         
         header = self.tabla.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -643,9 +614,9 @@ class SADPGui(QMainWindow):
 
         # Cabecera del Panel (Título + Botón Cerrar)
         panel_header = QHBoxLayout()
-        lbl_panel_title = QLabel("Modify Network Parameters")
-        lbl_panel_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #111827;")
-        panel_header.addWidget(lbl_panel_title)
+        self.lbl_panel_title = QLabel()
+        self.lbl_panel_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #111827;")
+        panel_header.addWidget(self.lbl_panel_title)
         
         panel_header.addStretch()
         
@@ -663,7 +634,7 @@ class SADPGui(QMainWindow):
             }
         """)
         btn_close_panel.clicked.connect(self.panel_modificar.hide)
-        btn_close_panel.clicked.connect(lambda: self.btn_toggle_panel.setText("✏️ Modificar Red"))
+        btn_close_panel.clicked.connect(lambda: self.btn_toggle_panel.setText(self.t("modify_network")))
         panel_header.addWidget(btn_close_panel)
         
         self.right_layout.addLayout(panel_header)
@@ -681,71 +652,79 @@ class SADPGui(QMainWindow):
         self.scroll_layout.setSpacing(10)
 
         # Checkboxes (DHCP / Hik-Connect)
-        self.chk_dhcp = QCheckBox("Enable DHCP")
+        self.chk_dhcp = QCheckBox()
         self.chk_dhcp.setEnabled(False)
         self.chk_dhcp.stateChanged.connect(self.toggle_dhcp_fields)
         self.scroll_layout.addWidget(self.chk_dhcp)
         
-        self.chk_hik = QCheckBox("Enable Hik-Connect")
+        self.chk_hik = QCheckBox()
         self.chk_hik.setEnabled(False)
         self.scroll_layout.addWidget(self.chk_hik)
 
         # Campos de texto individuales
-        self.scroll_layout.addWidget(QLabel("Modelo del equipo:"))
+        self.lbl_model = QLabel()
+        self.scroll_layout.addWidget(self.lbl_model)
         self.txt_model = QLineEdit()
-        self.txt_model.setPlaceholderText("Modelo del dispositivo...")
-        self.txt_model.setToolTip("Modelo detectado o personalizado del dispositivo")
         self.txt_model.setEnabled(False)
         self.txt_model.textChanged.connect(self.guardar_modelo_panel)
         self.scroll_layout.addWidget(self.txt_model)
 
-        self.scroll_layout.addWidget(QLabel("Device Serial No.:"))
+        self.lbl_serial = QLabel()
+        self.scroll_layout.addWidget(self.lbl_serial)
         self.txt_serial = QLineEdit()
         self.txt_serial.setReadOnly(True)
-        self.txt_serial.setToolTip("El número de serie es de sólo lectura")
         self.scroll_layout.addWidget(self.txt_serial)
 
-        self.scroll_layout.addWidget(QLabel("IP Address:"))
+        self.lbl_ip = QLabel()
+        self.scroll_layout.addWidget(self.lbl_ip)
         self.txt_ip = QLineEdit()
         self.txt_ip.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_ip)
 
-        self.scroll_layout.addWidget(QLabel("Port:"))
+        self.lbl_port = QLabel()
+        self.scroll_layout.addWidget(self.lbl_port)
         self.txt_port = QLineEdit()
         self.txt_port.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_port)
 
-        self.scroll_layout.addWidget(QLabel("Enhanced SDK Service Port:"))
+        self.lbl_sdk_port = QLabel()
+        self.scroll_layout.addWidget(self.lbl_sdk_port)
         self.txt_sdk_port = QLineEdit()
         self.txt_sdk_port.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_sdk_port)
 
-        self.scroll_layout.addWidget(QLabel("Subnet Mask:"))
+        self.lbl_subnet = QLabel()
+        self.scroll_layout.addWidget(self.lbl_subnet)
         self.txt_subnet = QLineEdit()
         self.txt_subnet.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_subnet)
 
-        self.scroll_layout.addWidget(QLabel("Gateway:"))
+        self.lbl_gateway = QLabel()
+        self.scroll_layout.addWidget(self.lbl_gateway)
         self.txt_gateway = QLineEdit()
         self.txt_gateway.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_gateway)
 
-        self.scroll_layout.addWidget(QLabel("IPv6 Address:"))
+        self.lbl_ipv6 = QLabel()
+        self.scroll_layout.addWidget(self.lbl_ipv6)
         self.txt_ipv6 = QLineEdit()
         self.txt_ipv6.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_ipv6)
 
-        self.scroll_layout.addWidget(QLabel("IPv6 Gateway:"))
+        self.lbl_ipv6_gw = QLabel()
+        self.scroll_layout.addWidget(self.lbl_ipv6_gw)
         self.txt_ipv6_gw = QLineEdit()
         self.txt_ipv6_gw.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_ipv6_gw)
 
-        self.scroll_layout.addWidget(QLabel("IPv6 Prefix Length:"))
+        self.lbl_ipv6_prefix = QLabel()
+        self.scroll_layout.addWidget(self.lbl_ipv6_prefix)
         self.txt_ipv6_prefix = QLineEdit()
         self.txt_ipv6_prefix.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_ipv6_prefix)
 
-        self.scroll_layout.addWidget(QLabel("HTTP Port:"))
+        self.lbl_http_port = QLabel()
+        self.scroll_layout.addWidget(self.lbl_http_port)
         self.txt_http_port = QLineEdit()
         self.txt_http_port.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_http_port)
@@ -758,19 +737,19 @@ class SADPGui(QMainWindow):
         self.scroll_layout.addWidget(linea)
 
         # Sección de Seguridad
-        lbl_sec = QLabel("Security Verification")
-        lbl_sec.setStyleSheet("font-weight: bold; color: #4B5563; margin-top: 5px;")
-        self.scroll_layout.addWidget(lbl_sec)
+        self.lbl_sec = QLabel()
+        self.lbl_sec.setStyleSheet("font-weight: bold; color: #4B5563; margin-top: 5px;")
+        self.scroll_layout.addWidget(self.lbl_sec)
 
-        self.scroll_layout.addWidget(QLabel("Administrator Password:"))
+        self.lbl_password = QLabel()
+        self.scroll_layout.addWidget(self.lbl_password)
         self.txt_password = QLineEdit()
         self.txt_password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_password.setPlaceholderText("Enter admin password")
         self.txt_password.setEnabled(False)
         self.scroll_layout.addWidget(self.txt_password)
 
         # Botón Modificar
-        self.btn_modify = QPushButton("Modify")
+        self.btn_modify = QPushButton()
         self.btn_modify.setProperty("class", "btn-coral")
         self.btn_modify.setMinimumHeight(35)
         self.btn_modify.setEnabled(False)
@@ -778,11 +757,11 @@ class SADPGui(QMainWindow):
         self.scroll_layout.addWidget(self.btn_modify)
 
         # Forgot Password Link
-        lbl_forgot = QLabel('<a href="#forgot" style="color: #0F83E6; text-decoration: none; font-weight: 500;">Forgot Password</a>')
-        lbl_forgot.setOpenExternalLinks(False)
-        lbl_forgot.linkActivated.connect(self.recuperar_contrasena)
-        lbl_forgot.setStyleSheet("margin-top: 5px;")
-        self.scroll_layout.addWidget(lbl_forgot)
+        self.lbl_forgot = QLabel()
+        self.lbl_forgot.setOpenExternalLinks(False)
+        self.lbl_forgot.linkActivated.connect(self.recuperar_contrasena)
+        self.lbl_forgot.setStyleSheet("margin-top: 5px;")
+        self.scroll_layout.addWidget(self.lbl_forgot)
 
         scroll_area.setWidget(scroll_widget)
         self.right_layout.addWidget(scroll_area)
@@ -797,14 +776,99 @@ class SADPGui(QMainWindow):
         # Dispositivos en caché
         self.dispositivos = []
 
+        # Inicializar todos los textos en el idioma configurado (inglés por defecto)
+        self.retranslate_ui()
+
+    def t(self, key: str, **kwargs) -> str:
+        """Helper para obtener texto traducido en el idioma activo"""
+        return t(key, lang=self.current_lang, **kwargs)
+
+    def cambiar_idioma(self, index: int):
+        """Cambia el idioma de la aplicación y refresca la UI inmediatamente"""
+        new_lang = self.combo_lang.currentData()
+        if new_lang and new_lang != self.current_lang:
+            self.current_lang = new_lang
+            self.settings.setValue("appLanguage", new_lang)
+            self.retranslate_ui()
+
+    def retranslate_ui(self):
+        """Aplica las traducciones dinámicamente a todos los componentes de la interfaz"""
+        self.setWindowTitle(self.t("app_title"))
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>{len(self.dispositivos)}</b>")
+        self.btn_unbind.setText(self.t("unbind"))
+        self.btn_export.setText(self.t("export"))
+        self.btn_scan.setText(self.t("refresh"))
+        self.txt_filter.setPlaceholderText(self.t("filter"))
+
+        if self.panel_modificar.isVisible():
+            self.btn_toggle_panel.setText(self.t("hide_panel"))
+        else:
+            self.btn_toggle_panel.setText(self.t("modify_network"))
+
+        if not self.scan_thread or not self.scan_thread.isRunning():
+            if self.dispositivos:
+                self.status_label.setText(self.t("found_devices", count=len(self.dispositivos)))
+            else:
+                self.status_label.setText(self.t("press_refresh"))
+
+        # Encabezados de tabla
+        headers = [
+            self.t("col_select"),
+            self.t("col_ip"),
+            self.t("col_mac"),
+            self.t("col_model"),
+            self.t("col_type"),
+            self.t("col_status"),
+            self.t("col_port"),
+            self.t("col_version")
+        ]
+        self.tabla.setHorizontalHeaderLabels(headers)
+
+        # Actualizar columna de tipo en las filas cargadas
+        self.tabla.blockSignals(True)
+        for r in range(self.tabla.rowCount()):
+            mac_item = self.tabla.item(r, 2)
+            if mac_item:
+                mac = mac_item.text().strip()
+                for d in self.dispositivos:
+                    if d.get('mac') == mac:
+                        type_str = translate_device_type(d.get('tipo', ''), d.get('serial', ''), lang=self.current_lang)
+                        self.tabla.setItem(r, 4, SortableItem(type_str, sort_key=type_str))
+                        break
+        self.tabla.blockSignals(False)
+
+        # Panel lateral
+        self.lbl_panel_title.setText(self.t("panel_title"))
+        self.chk_dhcp.setText(self.t("enable_dhcp"))
+        self.chk_hik.setText(self.t("enable_hik"))
+        self.lbl_model.setText(self.t("field_model"))
+        self.txt_model.setPlaceholderText(self.t("placeholder_model"))
+        self.txt_model.setToolTip(self.t("tooltip_model"))
+        self.lbl_serial.setText(self.t("field_serial"))
+        self.txt_serial.setToolTip(self.t("tooltip_serial"))
+        self.lbl_ip.setText(self.t("field_ip"))
+        self.lbl_port.setText(self.t("field_port"))
+        self.lbl_sdk_port.setText(self.t("field_sdk_port"))
+        self.lbl_subnet.setText(self.t("field_subnet"))
+        self.lbl_gateway.setText(self.t("field_gateway"))
+        self.lbl_ipv6.setText(self.t("field_ipv6"))
+        self.lbl_ipv6_gw.setText(self.t("field_ipv6_gw"))
+        self.lbl_ipv6_prefix.setText(self.t("field_ipv6_prefix"))
+        self.lbl_http_port.setText(self.t("field_http_port"))
+        self.lbl_sec.setText(self.t("sec_verification"))
+        self.lbl_password.setText(self.t("admin_password"))
+        self.txt_password.setPlaceholderText(self.t("enter_password"))
+        self.btn_modify.setText(self.t("modify"))
+        self.lbl_forgot.setText(f'<a href="#forgot" style="color: #0F83E6; text-decoration: none; font-weight: 500;">{self.t("forgot_password")}</a>')
+
     def toggle_panel(self):
         """Muestra u oculta el panel lateral de modificación de red"""
         if self.panel_modificar.isVisible():
             self.panel_modificar.hide()
-            self.btn_toggle_panel.setText("✏️ Modificar Red")
+            self.btn_toggle_panel.setText(self.t("modify_network"))
         else:
             self.panel_modificar.show()
-            self.btn_toggle_panel.setText("✏️ Ocultar Panel")
+            self.btn_toggle_panel.setText(self.t("hide_panel"))
 
     def toggle_dhcp_fields(self, state):
         """Habilita o deshabilita los campos de IP si DHCP está activo"""
@@ -817,7 +881,7 @@ class SADPGui(QMainWindow):
     def ejecutar_escaneo(self):
         """Inicia el escaneo en un thread aparte"""
         if self.scan_thread and self.scan_thread.isRunning():
-            QMessageBox.warning(self, "Escaneo en curso", "Ya hay un escaneo en progreso")
+            QMessageBox.warning(self, self.t("scan_in_progress_title"), self.t("scan_in_progress_msg"))
             return
         
         self.tabla.setRowCount(0)
@@ -826,8 +890,8 @@ class SADPGui(QMainWindow):
         self.btn_export.setEnabled(False)
         self.btn_unbind.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("Escaneando dispositivos... por favor espera")
-        self.lbl_count.setText("Total number of online devices: <b style='color:#0F83E6; font-size:16px;'>0</b>")
+        self.status_label.setText(self.t("scanning"))
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>0</b>")
         
         # Limpiar formulario
         self.txt_model.clear()
@@ -870,10 +934,10 @@ class SADPGui(QMainWindow):
     def mostrar_dispositivos(self, dispositivos):
         """Muestra los dispositivos en la tabla"""
         self.dispositivos = dispositivos
-        self.lbl_count.setText(f"Total number of online devices: <b style='color:#0F83E6; font-size:16px;'>{len(dispositivos)}</b>")
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>{len(dispositivos)}</b>")
         
         if not dispositivos:
-            self.status_label.setText("⚠️ No se encontraron dispositivos Hikvision en la red")
+            self.status_label.setText(self.t("no_devices"))
             return
         
         # Desactivar señales y ordenación mientras se insertan filas
@@ -913,7 +977,7 @@ class SADPGui(QMainWindow):
             # Tipo de Dispositivo (columna 4)
             tipo_raw = disp.get('tipo', '')
             serial_raw = disp.get('serial', '')
-            tipo_text = traducir_tipo_dispositivo(tipo_raw, serial_raw)
+            tipo_text = translate_device_type(tipo_raw, serial_raw, lang=self.current_lang)
             self.tabla.setItem(row_position, 4, SortableItem(tipo_text, sort_key=tipo_text))
 
             # Estado (columna 5)
@@ -935,7 +999,7 @@ class SADPGui(QMainWindow):
         # Volver a activar señales y ordenación después de insertar todas las filas
         self.tabla.blockSignals(False)
         self.tabla.setSortingEnabled(True)
-        self.status_label.setText(f"✅ Se encontraron {len(dispositivos)} dispositivo(s)")
+        self.status_label.setText(self.t("found_devices", count=len(dispositivos)))
 
     def save_header_state(self, *args):
         try:
@@ -997,8 +1061,8 @@ class SADPGui(QMainWindow):
 
     def mostrar_error(self, mensaje):
         """Muestra un error"""
-        QMessageBox.critical(self, "Error", f"Error en el escaneo:\n\n{mensaje}")
-        self.status_label.setText("❌ Error durante el escaneo")
+        QMessageBox.critical(self, self.t("scan_error"), f"{mensaje}")
+        self.status_label.setText(self.t("scan_error"))
 
     def escaneo_finalizado(self):
         """Llamado cuando el escaneo termina"""
@@ -1101,14 +1165,14 @@ class SADPGui(QMainWindow):
                 
                 respuesta = QMessageBox.question(
                     self,
-                    "Abrir en navegador",
-                    f"¿Deseas abrir la interfaz web de {ip}?",
+                    self.t("open_browser_title"),
+                    self.t("open_browser_msg", ip=ip),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 
                 if respuesta == QMessageBox.StandardButton.Yes:
                     webbrowser.open(url)
-                    self.status_label.setText(f"Abriendo {url} en el navegador...")
+                    self.status_label.setText(self.t("opening_browser", url=url))
 
     def filtrar_tabla(self, texto):
         """Filtra en tiempo real los dispositivos mostrados según el texto de búsqueda"""
@@ -1137,29 +1201,29 @@ class SADPGui(QMainWindow):
         password = self.txt_password.text()
 
         if not mac:
-            QMessageBox.warning(self, "Seleccionar Dispositivo", "Por favor, selecciona primero un dispositivo de la lista.")
+            QMessageBox.warning(self, self.t("select_device_title"), self.t("select_device_msg"))
             return
 
         if not password:
-            QMessageBox.warning(self, "Contraseña Requerida", "Por favor, introduce la contraseña de administrador del dispositivo para aplicar los cambios.")
+            QMessageBox.warning(self, self.t("password_req_title"), self.t("password_req_msg"))
             return
 
         if not dhcp:
             if not new_ip or len(new_ip.split('.')) != 4:
-                QMessageBox.warning(self, "IP Inválida", "Por favor, introduce una dirección IPv4 válida (ej. 192.168.1.64).")
+                QMessageBox.warning(self, self.t("invalid_ip_title"), self.t("invalid_ip_msg"))
                 return
             if not subnet or len(subnet.split('.')) != 4:
-                QMessageBox.warning(self, "Máscara Inválida", "Por favor, introduce una máscara de subred válida (ej. 255.255.255.0).")
+                QMessageBox.warning(self, self.t("invalid_subnet_title"), self.t("invalid_subnet_msg"))
                 return
 
         binario_path = obtener_binario_path()
         if not binario_path:
-            QMessageBox.critical(self, "Error", "No se encontró el binario SADP ejecutable para enviar la modificación.")
+            QMessageBox.critical(self, self.t("binary_not_found_title"), self.t("binary_not_found_msg"))
             return
 
         self.btn_modify.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText(f"Enviando cambios de red a {mac} ({new_ip})... por favor espera")
+        self.status_label.setText(self.t("sending_changes", mac=mac, new_ip=new_ip))
 
         self.modify_thread = ModifyThread(
             binario_path=binario_path,
@@ -1181,21 +1245,21 @@ class SADPGui(QMainWindow):
         self.txt_password.clear()
         
         if exito:
+            dhcp_status = self.t("enabled") if self.chk_dhcp.isChecked() else self.t("disabled")
             QMessageBox.information(
                 self,
-                "Modificación Exitosa",
-                f"<b>¡Parámetros de red actualizados correctamente!</b><br><br>"
-                f"• Dirección IP: <b>{self.txt_ip.text()}</b><br>"
-                f"• Máscara de subred: {self.txt_subnet.text()}<br>"
-                f"• Puerta de enlace: {self.txt_gateway.text()}<br>"
-                f"• Estado DHCP: {'Habilitado' if self.chk_dhcp.isChecked() else 'Deshabilitado'}<br><br>"
-                f"<i>Se iniciará un nuevo escaneo de red para refrescar la lista.</i>"
+                self.t("modify_success_title"),
+                self.t("modify_success_msg", 
+                       ip=self.txt_ip.text(), 
+                       subnet=self.txt_subnet.text(), 
+                       gateway=self.txt_gateway.text(), 
+                       dhcp=dhcp_status)
             )
-            self.status_label.setText("✅ Modificación exitosa. Re-escaneando red...")
+            self.status_label.setText(self.t("modify_success_title"))
             self.ejecutar_escaneo()
         else:
-            QMessageBox.critical(self, "Error de Modificación", mensaje)
-            self.status_label.setText("❌ Error al modificar parámetros de red")
+            QMessageBox.critical(self, self.t("modify_error_title"), mensaje)
+            self.status_label.setText(self.t("modify_error_title"))
 
     def desvincular_dispositivo(self):
         """Desvincula el dispositivo de la cuenta Hik-Connect/Ezviz usando la contraseña admin"""
@@ -1204,17 +1268,17 @@ class SADPGui(QMainWindow):
         password = self.txt_password.text()
 
         if not mac:
-            QMessageBox.warning(self, "Seleccionar Dispositivo", "Por favor, selecciona primero un dispositivo de la lista.")
+            QMessageBox.warning(self, self.t("select_device_title"), self.t("select_device_msg"))
             return
 
         if not password:
-            QMessageBox.warning(self, "Contraseña Requerida", "Por favor, introduce la contraseña de administrador en el campo de verificación para desvincular.")
+            QMessageBox.warning(self, self.t("password_req_title"), self.t("password_unbind_req_msg"))
             return
 
         confirmacion = QMessageBox.question(
             self,
-            "Confirmar Desvinculación",
-            f"¿Estás seguro de que deseas desvincular de Hik-Connect/Ezviz el dispositivo con MAC <b>{mac}</b>?",
+            self.t("confirm_unbind_title"),
+            self.t("confirm_unbind_msg", mac=mac),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirmacion != QMessageBox.StandardButton.Yes:
@@ -1222,12 +1286,12 @@ class SADPGui(QMainWindow):
 
         binario_path = obtener_binario_path()
         if not binario_path:
-            QMessageBox.critical(self, "Error", "No se encontró el binario SADP ejecutable.")
+            QMessageBox.critical(self, self.t("binary_not_found_title"), self.t("binary_not_found_msg"))
             return
 
         self.btn_unbind.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText(f"Desvinculando dispositivo {mac}...")
+        self.status_label.setText(self.t("unbinding_device", mac=mac))
 
         self.unbind_thread = UnbindThread(
             binario_path=binario_path,
@@ -1244,37 +1308,32 @@ class SADPGui(QMainWindow):
         self.txt_password.clear()
         
         if exito:
-            QMessageBox.information(self, "Desvinculación Exitosa", mensaje)
-            self.status_label.setText("✅ Dispositivo desvinculado con éxito")
+            QMessageBox.information(self, self.t("unbind_success_title"), mensaje)
+            self.status_label.setText(self.t("unbind_success_title"))
         else:
-            QMessageBox.critical(self, "Error al Desvincular", mensaje)
-            self.status_label.setText("❌ Error al desvincular dispositivo")
+            QMessageBox.critical(self, self.t("unbind_error_title"), mensaje)
+            self.status_label.setText(self.t("unbind_error_title"))
 
     def recuperar_contrasena(self, link=None):
         """Explica el flujo local offline para recuperar contraseña"""
         QMessageBox.information(
             self,
-            "Restaurar Contraseña (Forgot Password)",
-            f"<b>Restablecimiento de Contraseña Local Offline</b><br><br>"
-            f"Para restaurar la contraseña de fábrica:<br>"
-            f"1. Genera un archivo XML de solicitud de restablecimiento (.xml) desde la cámara física o su utilidad.<br>"
-            f"2. Contacta al soporte oficial de Hikvision o utiliza la aplicación Hik-Partner Pro para obtener un código de desbloqueo.<br>"
-            f"3. Importa el archivo XML de respuesta recibido para actualizar la contraseña del administrador.<br><br>"
-            f"<i>Esta herramienta local modularizará el soporte offline en próximas compilaciones.</i>"
+            self.t("forgot_password_title"),
+            self.t("forgot_password_msg")
         )
 
     def exportar_csv(self):
         """Exporta los dispositivos a un archivo CSV"""
         if not self.dispositivos:
-            QMessageBox.warning(self, "No hay datos", "No hay dispositivos para exportar")
+            QMessageBox.warning(self, self.t("no_data_title"), self.t("no_data_msg"))
             return
         
         try:
             filename, _ = QFileDialog.getSaveFileName(
                 self,
-                "Exportar lista de dispositivos Hikvision",
-                "dispositivos_hikvision.csv",
-                "Archivos CSV (*.csv);;Todos los archivos (*)"
+                self.t("export_dialog_title"),
+                "hikvision_devices.csv",
+                self.t("csv_filter")
             )
             if not filename:
                 return
@@ -1294,7 +1353,7 @@ class SADPGui(QMainWindow):
                 # Traducir el tipo para que sea legible en el CSV
                 tipo_raw = row.get('tipo', '')
                 serial_raw = row.get('serial', '')
-                row['tipo'] = traducir_tipo_dispositivo(tipo_raw, serial_raw)
+                row['tipo'] = translate_device_type(tipo_raw, serial_raw, lang=self.current_lang)
                 rows_to_write.append(row)
 
             with open(filename, 'w', newline='', encoding='utf-8') as f:
@@ -1302,10 +1361,15 @@ class SADPGui(QMainWindow):
                 writer.writeheader()
                 writer.writerows(rows_to_write)
             
-            QMessageBox.information(self, "Éxito", f"Datos exportados exitosamente ({len(rows_to_write)} dispositivos) a:\n'{filename}'")
-            self.status_label.setText(f"Exportado: {os.path.basename(filename)}")
+            QMessageBox.information(
+                self, 
+                self.t("export_success_title"), 
+                self.t("export_success_msg", count=len(rows_to_write), filename=filename)
+            )
+            self.status_label.setText(self.t("exported", filename=os.path.basename(filename)))
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al exportar: {str(e)}")
+            QMessageBox.critical(self, self.t("export_error_title"), self.t("export_error_msg", error=str(e)))
+
 
 
 if __name__ == "__main__":

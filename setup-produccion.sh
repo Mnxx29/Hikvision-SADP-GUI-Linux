@@ -108,10 +108,13 @@ if [[ -f "$SCRIPT_DIR/gui_sadp.py" ]]; then
     if [[ -f "$SCRIPT_DIR/sadp_discover.py" ]]; then
         echo "➡️ [3.2] Copiando sadp_discover.py..."
         cp "$SCRIPT_DIR/sadp_discover.py" "$INSTALL_DIR/"
-        echo "✅ Archivos Python instalados."
-    else
-        echo "✅ GUI instalada (sin sadp_discover.py)."
     fi
+    
+    if [[ -f "$SCRIPT_DIR/i18n.py" ]]; then
+        echo "➡️ [3.3] Copiando i18n.py..."
+        cp "$SCRIPT_DIR/i18n.py" "$INSTALL_DIR/"
+    fi
+    echo "✅ Archivos Python instalados."
 else
     echo "❌ Error: gui_sadp.py no encontrado."
     exit 1
