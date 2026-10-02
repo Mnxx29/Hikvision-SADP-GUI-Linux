@@ -114,7 +114,7 @@ For an in-depth protocol breakdown and manual network setup, refer to the [Techn
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome!
-Feel free to open an issue or submit a pull request on [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
+Check out the [Contributing Guidelines](CONTRIBUTING.md) to get started, report an issue, or submit a pull request.
 
 ---
 
