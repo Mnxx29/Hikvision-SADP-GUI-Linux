@@ -46,14 +46,10 @@ sadp-gui
 
 El instalador genera el comando global `sadp-gui` en `~/.local/bin/` y crea el archivo de escritorio `~/.local/share/applications/sadp-gui.desktop` para integración directa en el menú de aplicaciones.
 
-## Documentación detallada
-
-Consulte la [Guía Técnica de Uso y Red](GUIA.md) para especificaciones del protocolo, troubleshooting y configuración avanzada.
-
 ## Contribuciones y Feedback
 
 ¡Los reportes de errores, sugerencias y contribuciones son bienvenidos!
-Si encuentras algún problema o tienes alguna idea de mejora, abre un *Issue* o envía un *Pull Request* en [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
+Consulta las [Pautas de Contribución](CONTRIBUTING.md) para reportar problemas o enviar un *Pull Request* en [GitHub](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux).
 
 ---
 

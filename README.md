@@ -107,7 +107,6 @@ This diagnostic script automatically verifies:
 3. UFW and iptables firewall rules for multicast traffic.
 4. Interface link status and IP addressing.
 
-For an in-depth protocol breakdown and manual network setup, refer to the [Technical Guide (GUIA.md)](GUIA.md).
 
 ---
 
