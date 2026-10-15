@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTableWidgetItem, QHeaderView, QMessageBox, QLabel, QProgressBar,
                              QFrame, QScrollArea, QCheckBox, QLineEdit, QFileDialog, QComboBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon
 
 from i18n import t, translate_device_type, traducir_tipo_dispositivo
 
@@ -38,6 +38,8 @@ def obtener_binario_path() -> str:
         posibles_rutas = [
             os.path.join(script_dir, "sadp-linux-amd64"),
             os.path.join(script_dir, "sadp-linux-amd64-real"),
+            "/opt/hikvision-sadp/sadp-linux-amd64",
+            "/usr/bin/sadp-linux-amd64",
             os.path.expanduser("~/.local/bin/sadp/sadp-linux-amd64"),
             os.path.expanduser("~/.local/bin/sadp-linux-amd64"),
             "/usr/local/bin/sadp-linux-amd64",
@@ -337,6 +339,20 @@ class SADPGui(QMainWindow):
         self.setGeometry(100, 100, 1120, 650)
         self.scan_thread = None
         self.settings = QSettings("sadp", "sadp-gui-v2")
+
+        # Cargar icono de ventana si existe
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        icon_paths = [
+            os.path.join(script_dir, "hikvision-sadp.png"),
+            os.path.join(script_dir, "assets", "hikvision-sadp.png"),
+            "/usr/share/pixmaps/hikvision-sadp.png",
+            "/usr/share/icons/hicolor/128x128/apps/hikvision-sadp.png",
+            "/opt/hikvision-sadp/hikvision-sadp.png"
+        ]
+        for ipath in icon_paths:
+            if os.path.exists(ipath):
+                self.setWindowIcon(QIcon(ipath))
+                break
         
         # Cargar idioma preferido (inglés por defecto desde la raíz)
         self.current_lang = str(self.settings.value("appLanguage", "en"))

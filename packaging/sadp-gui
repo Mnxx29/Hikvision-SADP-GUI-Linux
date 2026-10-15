@@ -1,0 +1,39 @@
+#!/bin/bash
+# Launcher para SADP GUI en Linux
+set -e
+
+# 1. Configurar rp_filter=2 (modo laxo) para permitir respuestas UDP cross-subnet
+sudo sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
+sudo sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
+
+# 2. Detectar todas las interfaces de red activas
+IFACES=$(ip -o link show 2>/dev/null | awk -F': ' '$2 !~ /^lo/ && $3 ~ /state (UP|UNKNOWN)/ {print $2}' | cut -d'@' -f1)
+
+# 3. Forzar ruta multicast y abrir firewall en cada interfaz activa
+for IFACE in $IFACES; do
+    [ -z "$IFACE" ] && continue
+    sudo ip route add 239.255.255.250/32 dev "$IFACE" >/dev/null 2>&1 || \
+    sudo ip route change 239.255.255.250/32 dev "$IFACE" >/dev/null 2>&1 || true
+    
+    if command -v ufw >/dev/null 2>&1; then
+        sudo ufw allow in on "$IFACE" to any port 37020 proto udp >/dev/null 2>&1 || true
+    fi
+done
+
+# 4. Asegurar que respuestas SADP desde puerto 37020 no sean bloqueadas
+if command -v ufw >/dev/null 2>&1; then
+    sudo ufw allow from any port 37020 proto udp >/dev/null 2>&1 || true
+fi
+
+# 5. Ejecutar la aplicación
+if [ -f "/opt/hikvision-sadp/gui_sadp.py" ]; then
+    cd /opt/hikvision-sadp
+    exec python3 gui_sadp.py "$@"
+elif [ -f "$HOME/.local/bin/sadp/gui_sadp.py" ]; then
+    cd "$HOME/.local/bin/sadp"
+    exec python3 gui_sadp.py "$@"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cd "$SCRIPT_DIR"
+    exec python3 gui_sadp.py "$@"
+fi

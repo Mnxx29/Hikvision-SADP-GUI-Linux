@@ -68,7 +68,26 @@ Hikvision does not provide an official native **SADP (Search Active Devices Prot
 
 ## Installation
 
-Clone the repository and run the automated production setup script:
+### Option 1: Debian / Ubuntu / Linux Mint (.deb package) — Recommended
+
+Download the latest `.deb` package from the [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases) page and install it:
+
+```bash
+sudo apt install ./hikvision-sadp-gui_*_amd64.deb
+```
+*(This automatically installs dependencies like `python3-pyqt6`, creates desktop shortcuts, and configures required network routing privileges).*
+
+### Option 2: Portable Tarball (.tar.gz) — Any Linux Distribution
+
+Download the `.tar.gz` bundle from [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases):
+
+```bash
+tar -xzf hikvision-sadp-gui_*_linux_amd64.tar.gz
+cd hikvision-sadp-gui-*
+sudo bash install.sh
+```
+
+### Option 3: Install from Source
 
 ```bash
 # Clone the repository
@@ -79,7 +98,7 @@ cd Hikvision-SADP-GUI-Linux
 bash setup-produccion.sh
 ```
 
-> **Note**: Run the script as your regular user. The installer will ask for `sudo` privileges only when configuring necessary kernel parameters, firewall permissions, and system packages.
+> **Note**: When running `setup-produccion.sh`, execute as regular user. The installer will prompt for `sudo` only when configuring kernel parameters and system packages.
 
 ### Launching the Application
 

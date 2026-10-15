@@ -1,0 +1,14 @@
+Package: hikvision-sadp-gui
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: Mnxx29 <https://github.com/Mnxx29>
+Depends: python3 (>= 3.8), python3-pyqt6, iproute2
+Recommends: ufw, libcap2-bin
+Homepage: https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux
+Description: Hikvision SADP GUI Tool for Linux
+ A full-featured native Linux graphical interface (PyQt6) alternative
+ to Hikvision's official SADP Tool. Discovers, configures, and manages
+ Hikvision IP cameras, NVRs, DVRs, and intercoms on your local network
+ and across subnets without Wine.

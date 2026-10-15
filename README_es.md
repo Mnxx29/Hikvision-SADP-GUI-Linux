@@ -10,17 +10,41 @@ Aplicación gráfica nativa para Linux para el descubrimiento, diagnóstico y ge
 
 ## Instalación
 
+### Opción 1: Paquete Debian / Ubuntu / Linux Mint (.deb) — Recomendado
+
+Descarga el archivo `.deb` más reciente desde la sección de [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases) e instálalo:
+
 ```bash
+sudo apt install ./hikvision-sadp-gui_*_amd64.deb
+```
+*(Instala automáticamente las dependencias de PyQt6, crea el acceso en el menú de aplicaciones y configura los permisos de red).*
+
+### Opción 2: Paquete Portátil (.tar.gz) — Cualquier distribución Linux
+
+```bash
+tar -xzf hikvision-sadp-gui_*_linux_amd64.tar.gz
+cd hikvision-sadp-gui-*
+sudo bash install.sh
+```
+
+### Opción 3: Instalación desde código fuente
+
+```bash
+git clone https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux.git
+cd Hikvision-SADP-GUI-Linux
 bash setup-produccion.sh
 ```
 
 Ejecutar sin `sudo`. El instalador solicitará privilegios de superusuario únicamente cuando sea necesario para la configuración de red y dependencias.
 
-Para ejecutar la aplicación después de instalar:
+### Iniciar la aplicación
+
+Una vez instalada, ejecuta en tu terminal:
 
 ```bash
 sadp-gui
 ```
+O busca **"Hikvision SADP"** en el menú de aplicaciones de tu escritorio (GNOME, KDE Plasma, XFCE, etc.).
 
 ## Requisitos del sistema
 

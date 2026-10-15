@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Hikvision SADP
+GenericName=SADP Tool
+Comment=Discover and manage Hikvision cameras on Linux
+Exec=sadp-gui
+Icon=hikvision-sadp
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=true
+Keywords=hikvision;sadp;camera;cctv;nvr;dvr;security;ip;

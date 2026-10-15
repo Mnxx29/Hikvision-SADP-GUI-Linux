@@ -1,3 +1,6 @@
 *.sh text eol=lf
 *.py text eol=lf
 *.md text
+*.desktop text eol=lf
+packaging/sadp-gui text eol=lf
+packaging/debian/* text eol=lf
