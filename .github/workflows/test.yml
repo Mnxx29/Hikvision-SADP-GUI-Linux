@@ -1,0 +1,26 @@
+name: Tests
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install desktop test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pyqt6 qt6-wayland
+      - name: Unit and offscreen GUI tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Shell syntax
+        run: |
+          find . -path './.git' -prune -o -path './build' -prune -o -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+          bash -n packaging/sadp-gui
+          for script in packaging/debian/postinst packaging/debian/prerm packaging/debian/postrm; do sh -n "$script"; done

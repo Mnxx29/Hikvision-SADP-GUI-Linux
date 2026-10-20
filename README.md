@@ -1,169 +1,82 @@
-# Hikvision SADP Tool for Linux (GUI)
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
-[![GUI](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://riverbankcomputing.com/software/pyqt/)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20(Ubuntu%20%7C%20Debian)-orange.svg)](https://ubuntu.com/)
-[![Protocol](https://img.shields.io/badge/Protocol-SADP%20(UDP%2037020)-red.svg)](#architecture-and-features)
+# Hikvision SADP GUI for Linux
 
 **English** | [Español](README_es.md)
 
-> A full-featured, native Linux graphical interface (GUI) alternative to Hikvision's official Windows-only SADP Tool. Discover, configure, and manage Hikvision IP cameras, NVRs, DVRs, and intercoms on your local network.
+Native Python/PyQt6 discovery for Hikvision-compatible devices on a local network. The GUI discovers devices, filters and sorts results, preserves custom model labels, and exports CSV reports including serial numbers.
 
----
+![Application](docs/GUI.png)
 
-## Overview
+## Requirements and validation
 
-Hikvision does not provide an official native **SADP (Search Active Devices Protocol)** application for Linux. While command-line scripts exist, network technicians, sysadmins, and CCTV installers often need a visual, fast, and intuitive desktop interface to manage devices on field installations.
+- Python **3.9+**, PyQt6 **6.4+**, Linux with IPv4 networking and `iproute2`.
+- The packaged helper is **Linux amd64**. Other architectures require a separate helper build.
+- The test environment is **Ubuntu Desktop 24.04 LTS amd64**. Debian 12 and other distributions are not certified by this release's VM tests.
+- Devices must share a reachable layer-2 segment with a probed interface. Different device IP subnets on the same segment are supported; this does not automatically cross routers or VLAN boundaries.
+- Building from source needs Git, `dpkg-dev`, and Go **1.21+** as a bootstrap. The build downloads and uses the exact toolchain in [packaging/upstream.env](packaging/upstream.env). Go is not required to run a release package.
 
-**Hikvision SADP GUI Linux** solves this by delivering a native PyQt6 desktop application designed specifically for Linux. It directly implements the SADP protocol to scan across multiple network interfaces, detect devices even on different subnets, configure IP addresses, and unbind devices from Hik-Connect accounts.
+## Install
 
-<p align="center">
-  <img src="docs/GUI.png" alt="Hikvision SADP Linux GUI Screenshot" width="850">
-</p>
-
----
-
-## Comparison: Official SADP vs. CLI Tools vs. This Project
-
-| Feature | Official Hikvision SADP | CLI Tools (`hikvision-tooling`) | **Hikvision SADP GUI Linux (This Repo)** |
-| :--- | :---: | :---: | :---: |
-| **Linux Native** | ❌ (Windows only / Broken under Wine) | ✅ | ✅ **Yes** |
-| **User Interface** | ✅ Windows GUI | ❌ CLI only | ✅ **PyQt6 Modern GUI** |
-| **SADP Discovery (UDP 37020)** | ✅ | ✅ | ✅ **Simultaneous Multicast & Broadcast** |
-| **Cross-Subnet Discovery** | ⚠️ Inconsistent | ❌ | ✅ **Full Support (`rp_filter=2`)** |
-| **Multi-NIC & VLAN Scanning** | ⚠️ Single active adapter | ❌ | ✅ **All active interfaces probed** |
-| **Modify Network Parameters (IP, Mask, GW)** | ✅ | ⚠️ Complex flags | 🚧 *In active development (Coming in next release)* |
-| **Hik-Connect Unbind** | ✅ | ❌ | 🚧 *In active development* |
-| **Device Model & Type Translation** | ✅ | ⚠️ Raw codes | ✅ **Automatic (Camera, PTZ, NVR, DVR)** |
-| **CSV Export** | ✅ | ❌ (JSON stdout only) | ✅ **Full CSV Report Generation** |
-| **Built-in Network Diagnostics** | ❌ | ❌ | ✅ **Integrated Diagnostic Script** |
-
----
-
-## Key Features
-
-- **Native Protocol Implementation**: Sends and listens directly on UDP port `37020` via multicast (`239.255.255.250`) and local broadcast.
-- **Cross-Subnet & Factory Default Detection**: Finds brand new or unconfigured cameras (default IP `192.168.1.64`) even if your Linux workstation is in a completely different subnet (e.g. `10.0.0.0/24` or `172.16.0.0/16`).
-- **Simultaneous Multi-Interface Scanning**: Discovers equipment connected across multiple Ethernet adapters, Wi-Fi, and tagged VLANs simultaneously.
-- **Device Model & Type Identification**: Recognizes and labels Hikvision hardware codes (`IP Camera`, `PTZ Camera`, `NVR`, `DVR`, `Video Intercom`, `PoE Switch`).
-- **Complete CSV Export**: Generate audit reports with all discovered parameters: IP, MAC address, device type, software version, serial number, ports, and DHCP status.
-- **Diagnostic Toolkit**: Includes [`diagnostico.sh`](diagnostico.sh) to test firewall rules (UFW/iptables), multicast routing, socket binding, and raw packet capture.
-- **Linux Desktop Integration**: Automatically installs a system launcher command (`sadp-gui`) and an application shortcut (`.desktop`) in your desktop menu.
-
-> 🚧 **Upcoming Features (Roadmap)**:
-> - Direct network parameter modification (IP, Subnet Mask, Gateway, DHCP) from the right-hand panel.
-> - Direct Hik-Connect account unbind feature.
-
----
-
-## System Requirements
-
-- **Operating System**: Ubuntu 20.04 LTS / 22.04 LTS / 24.04 LTS, Debian 11 / 12, Linux Mint, or other Debian-based distributions.
-- **Python**: Version 3.8 or higher with `PyQt6`.
-- **Go**: Required during setup to build the high-speed network modification binary.
-- **Network**: Active Ethernet/Wi-Fi adapter connected to the same physical or virtual switch as the Hikvision devices.
-
----
-
-## Installation
-
-### Option 1: Debian / Ubuntu / Linux Mint (.deb package) — Recommended
-
-Download the latest `.deb` package from the [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases) page and install it:
+Download a `.deb` from [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases), then:
 
 ```bash
-sudo apt install ./hikvision-sadp-gui_*_amd64.deb
-```
-*(This automatically installs dependencies like `python3-pyqt6`, creates desktop shortcuts, and configures required network routing privileges).*
-
-### Option 2: Portable Tarball (.tar.gz) — Any Linux Distribution
-
-Download the `.tar.gz` bundle from [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases):
-
-```bash
-tar -xzf hikvision-sadp-gui_*_linux_amd64.tar.gz
-cd hikvision-sadp-gui-*
-sudo bash install.sh
-```
-
-### Option 3: Install from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux.git
-cd Hikvision-SADP-GUI-Linux
-
-# Run the installer (do not run with sudo)
-bash setup-produccion.sh
-```
-
-> **Note**: When running `setup-produccion.sh`, execute as regular user. The installer will prompt for `sudo` only when configuring kernel parameters and system packages.
-
-### Launching the Application
-
-Once installed, launch the application from your terminal:
-
-```bash
+sudo apt install ./hikvision-sadp-gui_1.0.3_amd64.deb
 sadp-gui
 ```
 
-Or search for **"Hikvision SADP"** in your desktop application menu (GNOME, KDE Plasma, XFCE, etc.).
+Verify downloads against the `SHA256SUMS.txt` supplied with each release.
 
----
+The application is installed in `/opt/hikvision-sadp`, with `/usr/bin/sadp-gui` and a desktop menu entry. Run the GUI as your normal user.
 
-## Network Troubleshooting & Diagnostics
+For the tarball, first install Python/PyQt6 and networking dependencies through your distribution. Extract the bundle, then run `sudo bash install.sh`. Do not mix tarball and Debian installations. To remove it, run the bundle's `sudo bash uninstall.sh`.
 
-If your Linux firewall (UFW) blocks UDP traffic or your system does not receive multicast responses:
+### From source (Debian/Ubuntu)
+
+```bash
+git clone https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux.git
+cd Hikvision-SADP-GUI-Linux
+bash setup-produccion.sh
+```
+
+This builds the pinned helper and installs the same Debian package, using sudo for package installation. It retires the older per-user launchers that would shadow the system launcher. The old `~/.local/bin/sadp` directory can be removed with `clean-install.sh` after migrating.
+
+## Network permissions and removal
+
+Installation needs root; starting and scanning do not. Version 1.0.3 removes `/etc/sudoers.d/sadp-gui-routing` from 1.0.2 and creates no passwordless sudoers rule or raw-socket capability.
+
+The installer sets only `net.ipv4.conf.all.rp_filter=2` and `net.ipv4.conf.default.rp_filter=2` in `/etc/sysctl.d/60-hikvision-sadp.conf`. Original runtime values are recorded in `/var/lib/hikvision-sadp/network-state.json` and retained across upgrades. These are system-wide reverse-path-filter settings; they allow asymmetric replies while retaining loose reverse-path validation.
+
+If UFW is already active and has no existing SADP policy, the installer adds SADP rules for UDP destination port 37020, UDP replies from source port 37020 (the helper uses ephemeral local ports), and outbound multicast to `239.255.255.250:37020`. It **never enables UFW**. Existing administrator SADP rules are preserved without relabelling or broadening them; the installer asks you to review that policy instead. If UFW is enabled later, explicitly rerun `sudo python3 /opt/hikvision-sadp/network_setup.py configure`. Other firewalls need equivalent administrator configuration.
+
+```bash
+sudo apt remove hikvision-sadp-gui
+```
+
+Removal restores tracked kernel values when they still equal the installed value, removes its unmodified sysctl file, and deletes only UFW rules added by this version. Administrator changes are preserved. Rules left by 1.0.2 are retained: that version did not record their ownership. An administrator can inspect them with `sudo ufw show added`.
+
+## Supported operations and limits
+
+Discovery is implemented in [sadp_discover.py](sadp_discover.py). The reviewed Go helper handles network changes and Hik-Connect/Ezviz unbind. Its source commit and compiler are pinned; its MIT license is included in the bundles.
+
+- Supported modification fields: IPv4 address, dotted contiguous subnet mask, gateway, SDK port and DHCP.
+- HTTP, IPv6 and Hik-Connect enablement controls remain disabled. Model edits are local labels, not device configuration.
+- A command succeeds only with helper exit code zero and an explicit matching SADP acknowledgement. Unknown replies and timeouts are **unconfirmed**; scan and check the device before retrying. State-changing commands are not automatically resent.
+- Real-device network modification and unbind need separate hardware validation. Discovery success does not certify those features or every firmware's result codes.
+- Password reset is not implemented; the GUI explains the external support workflow.
+
+## Diagnostics and development
 
 ```bash
 bash diagnostico.sh
+python3 sadp_discover.py --timeout 6 --debug
+python3 sadp_discover.py --timeout 6 --csv > devices.csv
 ```
 
-This diagnostic script automatically verifies:
-1. UDP port `37020` socket availability.
-2. Reverse path filtering (`rp_filter`) settings for cross-subnet discovery.
-3. UFW and iptables firewall rules for multicast traffic.
-4. Interface link status and IP addressing.
+Diagnostics inspect configuration and send discovery probes; they do not change routes, firewall or kernel settings. CSV stdout is machine-readable; debug output goes to stderr in CSV mode.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md) and [validation notes](docs/validation-1.0.3.md).
 
----
+## Disclaimer and license
 
-## Contributing
+Independent community project, not affiliated with or endorsed by Hikvision. Hikvision, EZVIZ, Hik-Connect and SADP belong to their respective owners and identify compatible equipment.
 
-Contributions, bug reports, and feature requests are welcome!
-Check out the [Contributing Guidelines](CONTRIBUTING.md) to get started, report an issue, or submit a pull request.
-
----
-
-## Frequently Asked Questions (FAQ)
-
-### Is there an official Hikvision SADP tool for Linux?
-No. Hikvision only provides the official SADP (Search Active Devices Protocol) software for Microsoft Windows. This project was developed from scratch to offer a native Linux equivalent with an intuitive desktop GUI.
-
-### Can I run Hikvision SADP on Linux without Wine or Virtual Machines?
-Yes! This application runs natively on Linux using Python 3 and PyQt6. It connects directly to raw UDP multicast sockets (`239.255.255.250:37020`), eliminating the need for Wine, emulators, or Windows virtual machines.
-
-### How does cross-subnet discovery work for unconfigured cameras (192.168.1.64)?
-Brand-new Hikvision devices default to the `192.168.1.64` IP address. Linux kernels typically drop asymmetric packets from other subnets by default. The setup script adjusts reverse path filtering (`rp_filter=2`) and binds route paths across all network interfaces, allowing SADP multicast probes and responses to cross subnet boundaries seamlessly.
-
-### Which Linux distributions are supported?
-The tool is fully tested on Ubuntu (20.04 LTS, 22.04 LTS, 24.04 LTS), Debian (11 / 12), Linux Mint, and other Debian-based operating systems. It also runs on Arch Linux, Fedora, and openSUSE with `python3-pyqt6` installed.
-
-### Does this tool work with OEM Hikvision equipment?
-Yes. Many brands (such as Annke, LTS, Lorex, Swann, and others) use Hikvision OEM hardware and firmware. If the device communicates over port 37020 using the SADP protocol, this tool will detect and list it.
-
----
-
-## Disclaimer
-
-This is an independent open-source community project. It is **not** affiliated with, sponsored by, authorized by, or endorsed by **Hangzhou Hikvision Digital Technology Co., Ltd.**
-
-"Hikvision", "EZVIZ", "Hik-Connect", and "SADP" are registered trademarks of their respective owners. All product names, logos, and brands are used for identification and interoperability purposes only under fair use.
-
----
-
-## License
-
-This project is open-source software licensed under the [MIT License](LICENSE).
-
+GUI code: [MIT](LICENSE). The packaged `hikvision-tooling` helper includes its own MIT copyright notice.

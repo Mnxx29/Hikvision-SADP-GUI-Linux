@@ -22,6 +22,7 @@ import time
 import subprocess
 import sys
 import select
+from sadp_operations import normalize_mac
 
 SADP_MULTICAST = "239.255.255.250"
 SADP_PORT = 37020
@@ -121,6 +122,8 @@ def parse_response(data, addr, debug=False):
             xml_str = xml_data.decode('latin-1')
 
         root = ET.fromstring(xml_str)
+        if root.tag.rsplit('}', 1)[-1].lower() != 'probematch':
+            return None
 
         def get(tag, default=''):
             """Busca un tag XML (case-insensitive)."""
@@ -129,12 +132,12 @@ def parse_response(data, addr, debug=False):
                 return el.text.strip()
             tag_lower = tag.lower()
             for child in root:
-                if child.tag.lower() == tag_lower:
+                if child.tag.rsplit('}', 1)[-1].lower() == tag_lower:
                     return (child.text or '').strip()
             return default
 
         mac = get('MAC')
-        if not mac:
+        if not normalize_mac(mac):
             if debug:
                 print(f"  [PARSE] Respuesta sin MAC, descartando")
             return None
@@ -201,125 +204,126 @@ def discover(timeout=10, debug=False):
     """
     devices = {}  # Clave: MAC normalizada, para deduplicar
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # SO_REUSEPORT permite coexistir con otros procesos en el mismo puerto
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    except (AttributeError, OSError):
-        pass
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # SO_REUSEPORT permite coexistir con otros procesos en el mismo puerto
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except (AttributeError, OSError):
+            pass
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-    # Buffer grande para manejar respuestas reensambladas (post IP-fragmentation)
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 1024)
-    except Exception:
-        pass
+        # Buffer grande para manejar respuestas reensambladas (post IP-fragmentation)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 1024)
+        except Exception:
+            pass
 
-    # TTL para multicast (4 saltos es suficiente para redes locales/VLANs)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 4)
+        # TTL para multicast (4 saltos es suficiente para redes locales/VLANs)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 4)
 
-    # Permitir recibir nuestro propio multicast
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+        # Permitir recibir nuestro propio multicast
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
 
-    # ── BIND AL PUERTO 37020 ──
-    # Los dispositivos responden al puerto fuente de la sonda. Si usamos un
-    # puerto aleatorio, el firewall (UFW) bloquea la respuesta porque solo
-    # tiene abierto el 37020/udp. Al enlazar directamente al 37020,
-    # tanto el envío como la recepción pasan por el puerto permitido.
-    bound_port = SADP_PORT
-    try:
-        sock.bind(('', SADP_PORT))
-    except OSError as e:
-        # Si el puerto 37020 está ocupado, usar uno aleatorio e informar
+        # ── BIND AL PUERTO 37020 ──
+        # Los dispositivos responden al puerto fuente de la sonda. Si usamos un
+        # puerto aleatorio, el firewall (UFW) bloquea la respuesta porque solo
+        # tiene abierto el 37020/udp. Al enlazar directamente al 37020,
+        # tanto el envío como la recepción pasan por el puerto permitido.
+        bound_port = SADP_PORT
+        try:
+            sock.bind(('', SADP_PORT))
+        except OSError as e:
+            # Si el puerto 37020 está ocupado, usar uno aleatorio e informar
+            if debug:
+                print(f"[SADP] No se pudo enlazar al puerto {SADP_PORT}: {e}")
+                print(f"[SADP] ⚠️  Usando puerto aleatorio. Si el firewall bloquea respuestas,")
+                print(f"[SADP]    ejecuta: sudo ufw allow from any port 37020 to any")
+            sock.bind(('', 0))
+            bound_port = sock.getsockname()[1]
+
         if debug:
-            print(f"[SADP] No se pudo enlazar al puerto {SADP_PORT}: {e}")
-            print(f"[SADP] ⚠️  Usando puerto aleatorio. Si el firewall bloquea respuestas,")
-            print(f"[SADP]    ejecuta: sudo ufw allow from any port 37020 to any")
-        sock.bind(('', 0))
-        bound_port = sock.getsockname()[1]
+            print(f"[SADP] Socket enlazado al puerto {bound_port}")
 
-    if debug:
-        print(f"[SADP] Socket enlazado al puerto {bound_port}")
-
-    # Unirse al grupo multicast en cada interfaz activa
-    iface_ips = get_interface_ips()
-    for ip in iface_ips:
-        try:
-            mreq = struct.pack("4s4s",
-                               socket.inet_aton(SADP_MULTICAST),
-                               socket.inet_aton(ip))
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-            if debug:
-                print(f"[SADP] Multicast join en {ip}")
-        except Exception as e:
-            if debug:
-                print(f"[SADP] No se pudo unir multicast en {ip}: {e}")
-
-    # Construir y enviar sonda
-    probe = build_probe()
-
-    # Enviar sonda multicast desde CADA interfaz (no solo la default)
-    for ip in iface_ips:
-        try:
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
-                            socket.inet_aton(ip))
-            sock.sendto(probe, (SADP_MULTICAST, SADP_PORT))
-            if debug:
-                print(f"[SADP] Sonda multicast enviada via {ip}")
-        except Exception as e:
-            if debug:
-                print(f"[SADP] Fallo envío multicast via {ip}: {e}")
-
-    # Enviar a direcciones broadcast (redundancia)
-    for brd in get_broadcast_addrs():
-        try:
-            sock.sendto(probe, (brd, SADP_PORT))
-            if debug:
-                print(f"[SADP] Sonda broadcast enviada a {brd}:{SADP_PORT}")
-        except Exception as e:
-            if debug:
-                print(f"[SADP] Fallo broadcast {brd}: {e}")
-
-    # Escuchar respuestas
-    end_time = time.time() + timeout
-    resend_time = time.time() + 2.0
-    resent = False
-
-    while True:
-        remaining = end_time - time.time()
-        if remaining <= 0:
-            break
-
-        # Reenviar sonda a los ~2 segundos para mejorar detección
-        if not resent and time.time() >= resend_time:
+        # Unirse al grupo multicast en cada interfaz activa
+        iface_ips = get_interface_ips()
+        for ip in iface_ips:
             try:
-                probe2 = build_probe()
-                sock.sendto(probe2, (SADP_MULTICAST, SADP_PORT))
-                for brd in get_broadcast_addrs():
-                    sock.sendto(probe2, (brd, SADP_PORT))
-                resent = True
+                mreq = struct.pack("4s4s",
+                                   socket.inet_aton(SADP_MULTICAST),
+                                   socket.inet_aton(ip))
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
                 if debug:
-                    print("[SADP] Sonda reenviada")
-            except Exception:
-                pass
+                    print(f"[SADP] Multicast join en {ip}")
+            except Exception as e:
+                if debug:
+                    print(f"[SADP] No se pudo unir multicast en {ip}: {e}")
 
-        ready, _, _ = select.select([sock], [], [], min(remaining, 0.5))
-        if not ready:
-            continue
+        # Construir y enviar sonda
+        probe = build_probe()
 
-        try:
-            data, addr = sock.recvfrom(65535)
-            device = parse_response(data, addr, debug=debug)
-            if device and device.get('mac'):
-                mac_key = device['mac'].lower().replace(':', '').replace('-', '')
-                if mac_key not in devices:
-                    devices[mac_key] = device
-        except Exception as e:
-            if debug:
-                print(f"[SADP] Error recibiendo: {e}")
+        # Enviar sonda multicast desde CADA interfaz (no solo la default)
+        for ip in iface_ips:
+            try:
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                socket.inet_aton(ip))
+                sock.sendto(probe, (SADP_MULTICAST, SADP_PORT))
+                if debug:
+                    print(f"[SADP] Sonda multicast enviada via {ip}")
+            except Exception as e:
+                if debug:
+                    print(f"[SADP] Fallo envío multicast via {ip}: {e}")
 
-    sock.close()
+        # Enviar a direcciones broadcast (redundancia)
+        for brd in get_broadcast_addrs():
+            try:
+                sock.sendto(probe, (brd, SADP_PORT))
+                if debug:
+                    print(f"[SADP] Sonda broadcast enviada a {brd}:{SADP_PORT}")
+            except Exception as e:
+                if debug:
+                    print(f"[SADP] Fallo broadcast {brd}: {e}")
+
+        # Escuchar respuestas
+        end_time = time.monotonic() + timeout
+        resend_time = time.monotonic() + 2.0
+        resent = False
+
+        while True:
+            remaining = end_time - time.monotonic()
+            if remaining <= 0:
+                break
+
+            # Reenviar sonda a los ~2 segundos para mejorar detección
+            if not resent and time.monotonic() >= resend_time:
+                try:
+                    probe2 = build_probe()
+                    for ip in iface_ips:
+                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip))
+                        sock.sendto(probe2, (SADP_MULTICAST, SADP_PORT))
+                    for brd in get_broadcast_addrs():
+                        sock.sendto(probe2, (brd, SADP_PORT))
+                    resent = True
+                    if debug:
+                        print("[SADP] Sonda reenviada")
+                except Exception:
+                    pass
+
+            ready, _, _ = select.select([sock], [], [], min(remaining, 0.5))
+            if not ready:
+                continue
+
+            try:
+                data, addr = sock.recvfrom(65535)
+                device = parse_response(data, addr, debug=debug)
+                if device and device.get('mac'):
+                    mac_key = device['mac'].lower().replace(':', '').replace('-', '')
+                    if mac_key not in devices:
+                        devices[mac_key] = device
+            except Exception as e:
+                if debug:
+                    print(f"[SADP] Error recibiendo: {e}")
+
 
     result = list(devices.values())
     if debug:
@@ -435,18 +439,21 @@ if __name__ == '__main__':
         raw_capture(timeout=args.timeout)
         sys.exit(0)
 
-    print("SADP Discovery - Descubrimiento Nativo Python")
-    print(f"Buscando dispositivos Hikvision (timeout {args.timeout}s)...\n")
-
-    devs = discover(timeout=args.timeout, debug=args.debug)
+    import contextlib
+    import csv
+    if not args.csv:
+        print("SADP Discovery - Descubrimiento Nativo Python")
+        print(f"Buscando dispositivos Hikvision (timeout {args.timeout}s)...\n")
+    with contextlib.redirect_stdout(sys.stderr if args.csv else sys.stdout):
+        devs = discover(timeout=args.timeout, debug=args.debug)
 
     if args.csv:
-        print("IPv4Address,MAC,DeviceType,Activated,Port,HttpPort,"
-              "SerialNumber,SoftwareVersion,IPv4SubnetMask,IPv4Gateway,DHCP")
+        writer = csv.writer(sys.stdout)
+        writer.writerow(['IPv4Address', 'MAC', 'DeviceType', 'Activated', 'Port', 'HttpPort',
+                         'SerialNumber', 'SoftwareVersion', 'IPv4SubnetMask', 'IPv4Gateway', 'DHCP'])
         for d in devs:
-            print(f"{d['ip']},{d['mac']},{d['tipo']},{d['estado']},"
-                  f"{d['puerto']},{d['http_port']},{d['serial']},"
-                  f"{d['version']},{d['subnet']},{d['gateway']},{d['dhcp']}")
+            writer.writerow([d[k] for k in ('ip', 'mac', 'tipo', 'estado', 'puerto', 'http_port',
+                                            'serial', 'version', 'subnet', 'gateway', 'dhcp')])
     else:
         print(f"Descubiertos {len(devs)} dispositivo(s)\n")
         if devs:

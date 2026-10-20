@@ -1,10 +1,12 @@
 import sys
 import subprocess
 import csv
-import io
+import tempfile
+import xml.etree.ElementTree as ET
 import webbrowser
 import os
 import shutil
+from xml.sax.saxutils import escape
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTableWidget, 
                              QTableWidgetItem, QHeaderView, QMessageBox, QLabel, QProgressBar,
@@ -13,12 +15,15 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
 from PyQt6.QtGui import QFont, QIcon
 
 from i18n import t, translate_device_type, traducir_tipo_dispositivo
+from sadp_operations import (CSV_FIELDS, normalize_mac, parse_update_response,
+                             parse_command_response, validate_network_settings)
 
 
 class SortableItem(QTableWidgetItem):
     """QTableWidgetItem que soporta clave de ordenación personalizada."""
     def __init__(self, text: str, sort_key=None):
         super().__init__(text)
+        self.setFlags(self.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.sort_key = sort_key if sort_key is not None else text
 
     def __lt__(self, other):
@@ -32,53 +37,22 @@ class SortableItem(QTableWidgetItem):
 def obtener_binario_path() -> str:
     """Busca el ejecutable SADP en el PATH y en rutas conocidas del sistema."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    binario_path = shutil.which("sadp-linux-amd64") or shutil.which("sadp")
-    
-    if not binario_path:
-        posibles_rutas = [
-            os.path.join(script_dir, "sadp-linux-amd64"),
-            os.path.join(script_dir, "sadp-linux-amd64-real"),
-            "/opt/hikvision-sadp/sadp-linux-amd64",
-            "/usr/bin/sadp-linux-amd64",
-            os.path.expanduser("~/.local/bin/sadp/sadp-linux-amd64"),
-            os.path.expanduser("~/.local/bin/sadp-linux-amd64"),
-            "/usr/local/bin/sadp-linux-amd64",
-            "./sadp-linux-amd64",
-            "./sadp-linux-amd64-real",
-            "sadp-windows-amd64.exe",
-            "sadp.exe"
-        ]
-        for ruta in posibles_rutas:
-            if os.path.exists(ruta):
-                return ruta
-    return binario_path or ""
-
-
-def parse_update_response(response_text: str) -> tuple[bool, str]:
-    """Analiza la respuesta enviada por el dispositivo SADP al modificar la red."""
-    if not response_text:
-        return False, "No se recibió respuesta del dispositivo (timeout de red)."
-    
-    resp_lower = response_text.lower()
-    
-    if "pwerror" in resp_lower or "password error" in resp_lower or "errorpassword" in resp_lower or "password is wrong" in resp_lower:
-        return False, "Contraseña de administrador incorrecta. Verifica la clave ingresada."
-        
-    if "failed" in resp_lower or "<result>failed</result>" in resp_lower or "<result>2</result>" in resp_lower:
-        return False, f"El dispositivo rechazó la modificación:\n\n{response_text}"
-        
-    if "success" in resp_lower or "<result>success</result>" in resp_lower or "<result>0</result>" in resp_lower or "types>update" in resp_lower or "probe" in resp_lower:
-        return True, "¡Parámetros de red modificados exitosamente!"
-        
-    return True, f"Respuesta recibida del dispositivo:\n\n{response_text}"
+    for candidate in (
+        os.path.join(script_dir, 'sadp-linux-amd64'),
+        '/opt/hikvision-sadp/sadp-linux-amd64',
+        os.path.expanduser('~/.local/bin/sadp/sadp-linux-amd64'),
+    ):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return shutil.which('sadp-linux-amd64') or shutil.which('sadp') or ""
 
 
 class ModifyThread(QThread):
     """Thread para enviar la orden de modificación de red por SADP sin congelar la GUI"""
-    finished = pyqtSignal(bool, str)
+    result = pyqtSignal(bool, str)
     
     def __init__(self, binario_path: str, current_ip: str, mac: str, password: str, 
-                 new_ip: str, mask: str, gateway: str, port: str, dhcp: bool):
+                  new_ip: str, mask: str, gateway: str, port: str, dhcp: bool, lang='en'):
         super().__init__()
         self.binario_path = binario_path
         self.current_ip = current_ip if current_ip else "0.0.0.0"
@@ -89,6 +63,7 @@ class ModifyThread(QThread):
         self.gateway = gateway
         self.port = str(port) if port else "8000"
         self.dhcp = "true" if dhcp else "false"
+        self.lang = lang
 
     def run(self):
         try:
@@ -98,42 +73,39 @@ class ModifyThread(QThread):
                 self.current_ip,
                 "update",
                 "--mac", self.mac,
-                "--password", self.password,
+                "--password", escape(self.password),
                 "--ip", self.new_ip,
                 "--mask", self.mask,
                 "--gateway", self.gateway,
                 "--port", self.port,
-                f"--dhcp={self.dhcp}"
+                f"--dhcp={self.dhcp}", "--timeout", "10s"
             ]
             
             resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
             output = (resultado.stdout + "\n" + resultado.stderr).strip()
             
-            # Si el envío a la IP actual falló o hizo timeout, reintentar con 0.0.0.0 (multicast/broadcast por MAC)
-            if resultado.returncode != 0 or "timeout" in output.lower() or not output:
-                if self.current_ip != "0.0.0.0":
-                    cmd[2] = "0.0.0.0"
-                    retry_res = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
-                    output = (retry_res.stdout + "\n" + retry_res.stderr).strip()
-
-            success, msg = parse_update_response(output)
-            self.finished.emit(success, msg)
+            # An uncertain result must not automatically resend a state-changing command.
+            success, key = parse_update_response(output, resultado.returncode, self.mac)
+            self.result.emit(success, t(key, lang=self.lang))
         except subprocess.TimeoutExpired:
-            self.finished.emit(False, "El dispositivo no respondió a la solicitud de modificación (Timeout).")
-        except Exception as e:
-            self.finished.emit(False, f"Error al ejecutar comando de modificación: {str(e)}")
+            self.result.emit(False, t('command_no_response', lang=self.lang))
+        except Exception:
+            self.result.emit(False, t('command_failed', lang=self.lang))
+        finally:
+            self.password = ''
 
 
 class UnbindThread(QThread):
     """Thread para desvincular el dispositivo de Hik-Connect/Ezviz sin congelar la GUI"""
-    finished = pyqtSignal(bool, str)
+    result = pyqtSignal(bool, str)
     
-    def __init__(self, binario_path: str, current_ip: str, mac: str, password: str):
+    def __init__(self, binario_path: str, current_ip: str, mac: str, password: str, lang='en'):
         super().__init__()
         self.binario_path = binario_path
         self.current_ip = current_ip if current_ip else "0.0.0.0"
         self.mac = mac
         self.password = password
+        self.lang = lang
 
     def run(self):
         try:
@@ -143,194 +115,69 @@ class UnbindThread(QThread):
                 self.current_ip,
                 "ezvizunbind",
                 "--mac", self.mac,
-                "--password", self.password
+                "--password", escape(self.password), "--timeout", "10s"
             ]
             resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
             output = (resultado.stdout + "\n" + resultado.stderr).strip()
             
-            if "success" in output.lower() or "unbind" in output.lower():
-                self.finished.emit(True, "Dispositivo desvinculado exitosamente de Hik-Connect/Ezviz.")
-            elif "pwerror" in output.lower() or "password" in output.lower():
-                self.finished.emit(False, "Contraseña de administrador incorrecta.")
-            else:
-                self.finished.emit(False, f"Respuesta del dispositivo:\n{output}")
+            success, key = parse_command_response(output, resultado.returncode, 'ezvizunbind', self.mac)
+            self.result.emit(success, t('unbind_success_msg' if success else key, lang=self.lang))
         except subprocess.TimeoutExpired:
-            self.finished.emit(False, "El dispositivo no respondió a la solicitud de desvinculación (Timeout).")
-        except Exception as e:
-            self.finished.emit(False, f"Error al desvincular: {str(e)}")
+            self.result.emit(False, t('command_no_response', lang=self.lang))
+        except Exception:
+            self.result.emit(False, t('command_failed', lang=self.lang))
+        finally:
+            self.password = ''
 
 
 class ScanThread(QThread):
-    """Thread para ejecutar el escaneo sin congelar la interfaz"""
-    finished = pyqtSignal()
+    """Scan without privileges; a successful empty scan is a normal result."""
     error = pyqtSignal(str)
     devices = pyqtSignal(list)
-    
+
+    def __init__(self, lang='en'):
+        super().__init__()
+        self.lang = lang
+
     def run(self):
         try:
-            # 0. En sistemas Linux, aplicar sysctl para rp_filter (permitir subredes distintas)
-            # y habilitar la ruta multicast en TODAS las interfaces de red activas
-            if sys.platform.startswith('linux'):
-                try:
-                    cmd_prep = (
-                        "sudo sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true; "
-                        "sudo sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true; "
-                        "for iface in $(ip -o link show | awk -F': ' '$2 !~ /^lo/ && $3 ~ /state (UP|UNKNOWN)/ {print $2}' | cut -d'@' -f1); do "
-                        "  [ -z \"$iface\" ] && continue; "
-                        "  sudo ip route add 239.255.255.250/32 dev \"$iface\" 2>/dev/null || "
-                        "  sudo ip route change 239.255.255.250/32 dev \"$iface\" 2>/dev/null || true; "
-                        "done"
-                    )
-                    subprocess.run(cmd_prep, shell=True, timeout=5)
-                except Exception as prep_err:
-                    print(f"[DEBUG ScanThread] Aviso preparando interfaces: {prep_err}")
-
-            # ── MÉTODO PRIMARIO: Descubrimiento nativo Python (no depende del binario Go) ──
-            dispositivos = []
+            from sadp_discover import discover
             try:
-                # Importar el módulo de descubrimiento nativo
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                if script_dir not in sys.path:
-                    sys.path.insert(0, script_dir)
-                from sadp_discover import discover as sadp_discover_native
-                
-                print("[DEBUG ScanThread] Usando descubrimiento SADP nativo (Python)")
-                dispositivos = sadp_discover_native(timeout=12, debug=False)
-                
-                if dispositivos:
-                    print(f"[DEBUG ScanThread] Descubrimiento nativo encontró {len(dispositivos)} dispositivo(s)")
-                    self.devices.emit(dispositivos)
-                    self.finished.emit()
-                    return
-                else:
-                    print("[DEBUG ScanThread] Descubrimiento nativo: 0 dispositivos, intentando binario Go...")
-            except ImportError:
-                print("[DEBUG ScanThread] Módulo sadp_discover.py no disponible, usando binario Go")
-            except Exception as native_err:
-                print(f"[DEBUG ScanThread] Error en descubrimiento nativo: {native_err}, fallback a binario Go")
+                devices = discover(timeout=12, debug=False)
+            except Exception as native_error:
+                print(f'[SADP] Native discovery failed: {native_error}; trying the helper')
+                devices = self._fallback()
+            self.devices.emit(devices)
+        except Exception as error:
+            print(f'[SADP] Discovery failed: {error}')
+            self.error.emit(t('scan_error', lang=self.lang))
+        # QThread emits its own finished signal after run actually returns.
 
-            # ── FALLBACK: Binario Go (sadp-linux-amd64) ──
-            binario_path = obtener_binario_path()
-            if not binario_path:
-                if not dispositivos:
-                    self.error.emit("No se encontró el binario SADP ni el módulo de descubrimiento nativo.\n\nAsegúrate de que 'sadp_discover.py' o 'sadp-linux-amd64' estén en el mismo directorio que gui_sadp.py o instalado en ~/.local/bin/sadp/")
-                self.finished.emit()
-                return
-            
-            # 1. Intentar primero obtener la salida en formato CSV (contiene campos de subred, gateway, DHCP)
-            resultado_csv = subprocess.run(
-                [binario_path, "discover:sadp", "--csv"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False
-            )
-            
-            if resultado_csv.returncode == 0 and "IPv4Address" in resultado_csv.stdout:
-                try:
-                    reader = csv.DictReader(io.StringIO(resultado_csv.stdout))
-                    for row in reader:
-                        ip = row.get('IPv4Address', '').strip()
-                        mac = row.get('MAC', '').strip()
-                        if not ip or not mac:
-                            continue
-                        
-                        act_raw = row.get('Activated', '').strip().lower()
-                        estado = "Active" if act_raw in ['true', 'active', 'activado'] else ("Inactive" if act_raw in ['false', 'inactive'] else row.get('Activated', 'Active'))
-                        
-                        dispositivos.append({
-                            'ip': ip,
-                            'mac': mac,
-                            'tipo': row.get('DeviceType', '').strip(),
-                            'estado': estado,
-                            'puerto': row.get('Port', '8000').strip(),
-                            'http_port': row.get('HttpPort', '80').strip(),
-                            'serial': row.get('SerialNumber', '').strip(),
-                            'version': row.get('SoftwareVersion', '').strip(),
-                            'subnet': row.get('IPv4SubnetMask', '255.255.255.0').strip(),
-                            'gateway': row.get('IPv4Gateway', '').strip(),
-                            'dhcp': row.get('DHCP', 'false').strip()
-                        })
-                except Exception as csv_err:
-                    print(f"[DEBUG ScanThread] Error parseando CSV SADP: {csv_err}")
-
-            # 2. Fallback a la salida de tabla de texto plano si no se obtuvieron datos por CSV
-            if not dispositivos:
-                resultado = subprocess.run(
-                    [binario_path, "discover:sadp"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    check=False
-                )
-                
-                if resultado.returncode != 0 and not dispositivos:
-                    error_msg = resultado.stderr.strip() if resultado.stderr else "Código de salida no cero sin mensaje de error."
-                    self.error.emit(f"Error al ejecutar sadp (Código {resultado.returncode}):\n{error_msg}")
-                    self.finished.emit()
-                    return
-                
-                lineas = resultado.stdout.splitlines()
-                for linea in lineas:
-                    linea_clean = linea.strip()
-                    if not linea_clean or linea_clean.startswith('#') or 'descubierto' in linea_clean.lower():
-                        continue
-                    
-                    partes = linea_clean.split()
-                    if len(partes) < 6:
-                        continue
-                    
-                    idx_ip = -1
-                    for i in range(min(3, len(partes))):
-                        subpartes = partes[i].split('.')
-                        if len(subpartes) == 4 and all(s.isdigit() for s in subpartes):
-                            idx_ip = i
-                            break
-                    
-                    if idx_ip == -1:
-                        continue
-                    
-                    start_data = idx_ip
-                    if len(partes) - start_data >= 6:
-                        try:
-                            ip      = partes[start_data]
-                            mac     = partes[start_data + 1]
-                            tipo    = partes[start_data + 2]
-                            estado  = partes[start_data + 3]
-                            puerto  = partes[start_data + 4]
-                            serial  = partes[start_data + 5]
-                            version = " ".join(partes[start_data + 6:]) if len(partes) > start_data + 6 else 'N/A'
-                            
-                            # Inferir gateway si no viene en texto
-                            ip_parts = ip.split('.')
-                            gw_inferred = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.1" if len(ip_parts) == 4 else ""
-
-                            dispositivos.append({
-                                'ip': ip,
-                                'mac': mac,
-                                'tipo': tipo,
-                                'estado': estado,
-                                'puerto': puerto,
-                                'http_port': '80',
-                                'serial': serial,
-                                'version': version,
-                                'subnet': '255.255.255.0',
-                                'gateway': gw_inferred,
-                                'dhcp': 'false'
-                            })
-                        except Exception as parse_err:
-                            print(f"[DEBUG Parser] Error procesando línea: {linea_clean}. Detalle: {parse_err}")
-                            pass
-            
-            self.devices.emit(dispositivos)
-            self.finished.emit()
-            
-        except subprocess.TimeoutExpired:
-            self.error.emit("Timeout: el escaneo tardó demasiado tiempo (límite de 30 segundos)")
-            self.finished.emit()
-        except Exception as e:
-            self.error.emit(f"Error inesperado en el subproceso: {str(e)}")
-            self.finished.emit()
+    def _fallback(self):
+        binary = obtener_binario_path()
+        if not binary:
+            raise RuntimeError('SADP helper not installed')
+        from sadp_discover import parse_response
+        with tempfile.TemporaryDirectory(prefix='sadp-discovery-') as directory:
+            output = os.path.join(directory, 'devices.xml')
+            # The helper mixes progress logs into stdout; use its XML output file.
+            subprocess.run([binary, 'discover:sadp', '--xml', '--output', output,
+                            '--timeout', '10s'], capture_output=True, text=True,
+                           timeout=15, check=True)
+            root = ET.parse(output).getroot()
+            if root.tag != 'SADPDeviceList':
+                raise ValueError('Unexpected helper discovery output')
+            devices = []
+            # XMLName on the pinned helper's Device struct serializes each
+            # child as ProbeMatch, despite the list field's Device tag.
+            for node in root:
+                if node.tag not in ('ProbeMatch', 'Device'):
+                    continue
+                node.tag = 'ProbeMatch'
+                device = parse_response(ET.tostring(node), ('0.0.0.0', 37020))
+                if device:
+                    devices.append(device)
+            return devices
 
 
 class SADPGui(QMainWindow):
@@ -338,6 +185,7 @@ class SADPGui(QMainWindow):
         super().__init__()
         self.setGeometry(100, 100, 1120, 650)
         self.scan_thread = None
+        self._operation_busy = False
         self.settings = QSettings("sadp", "sadp-gui-v2")
 
         # Cargar icono de ventana si existe
@@ -871,6 +719,12 @@ class SADPGui(QMainWindow):
         self.lbl_ipv6_gw.setText(self.t("field_ipv6_gw"))
         self.lbl_ipv6_prefix.setText(self.t("field_ipv6_prefix"))
         self.lbl_http_port.setText(self.t("field_http_port"))
+        for widget in (self.chk_hik, self.txt_ipv6, self.txt_ipv6_gw,
+                       self.txt_ipv6_prefix, self.txt_http_port):
+            widget.setEnabled(False)
+            widget.setToolTip(self.t('feature_pending'))
+        self.txt_port.setReadOnly(True)
+        self.txt_port.setToolTip(self.t('port_readonly'))
         self.lbl_sec.setText(self.t("sec_verification"))
         self.lbl_password.setText(self.t("admin_password"))
         self.txt_password.setPlaceholderText(self.t("enter_password"))
@@ -896,12 +750,16 @@ class SADPGui(QMainWindow):
 
     def ejecutar_escaneo(self):
         """Inicia el escaneo en un thread aparte"""
+        if self._operation_busy:
+            return
         if self.scan_thread and self.scan_thread.isRunning():
             QMessageBox.warning(self, self.t("scan_in_progress_title"), self.t("scan_in_progress_msg"))
             return
         
         self.tabla.setRowCount(0)
         self.dispositivos = []
+        self.selected_device_mac = ''
+        self.selected_device_ip = ''
         self.btn_scan.setEnabled(False)
         self.btn_export.setEnabled(False)
         self.btn_unbind.setEnabled(False)
@@ -941,7 +799,7 @@ class SADPGui(QMainWindow):
         self.txt_password.setEnabled(False)
         self.btn_modify.setEnabled(False)
         
-        self.scan_thread = ScanThread()
+        self.scan_thread = ScanThread(self.current_lang)
         self.scan_thread.devices.connect(self.mostrar_dispositivos)
         self.scan_thread.error.connect(self.mostrar_error)
         self.scan_thread.finished.connect(self.escaneo_finalizado)
@@ -1028,11 +886,16 @@ class SADPGui(QMainWindow):
     def save_sort_indicator(self, index: int, order: Qt.SortOrder):
         try:
             self.settings.setValue("sortColumnV4", int(index))
-            self.settings.setValue("sortOrderV4", int(order))
+            self.settings.setValue("sortOrderV4", order.value)
         except Exception:
             pass
 
     def closeEvent(self, event):
+        if any(getattr(self, name, None) and getattr(self, name).isRunning()
+               for name in ('scan_thread', 'modify_thread', 'unbind_thread')):
+            QMessageBox.information(self, self.t('operation_busy_title'), self.t('operation_busy_msg'))
+            event.ignore()
+            return
         # Guardar estado al cerrar
         try:
             self.save_header_state()
@@ -1161,15 +1024,16 @@ class SADPGui(QMainWindow):
         self.txt_sdk_port.setEnabled(True)
         self.txt_subnet.setEnabled(True)
         self.txt_gateway.setEnabled(True)
-        self.txt_http_port.setEnabled(True)
-        self.txt_ipv6.setEnabled(True)
-        self.txt_ipv6_gw.setEnabled(True)
-        self.txt_ipv6_prefix.setEnabled(True)
+        self.txt_http_port.setEnabled(False)
+        self.txt_ipv6.setEnabled(False)
+        self.txt_ipv6_gw.setEnabled(False)
+        self.txt_ipv6_prefix.setEnabled(False)
         self.chk_dhcp.setEnabled(True)
-        self.chk_hik.setEnabled(True)
+        self.chk_hik.setEnabled(False)
         self.txt_password.setEnabled(True)
         self.btn_modify.setEnabled(True)
         self.btn_unbind.setEnabled(True)
+        self.toggle_dhcp_fields(self.chk_dhcp.checkState().value)
 
     def doble_clic_celda(self, row, column):
         """Maneja el doble clic en la IP (columna 1) para abrir en el navegador"""
@@ -1207,6 +1071,8 @@ class SADPGui(QMainWindow):
 
     def ejecutar_modificacion(self):
         """Ejecuta el cambio de parámetros de red vía tramas SADP UDP multicast/broadcast"""
+        if self._operation_busy or (self.scan_thread and self.scan_thread.isRunning()):
+            return
         mac = getattr(self, 'selected_device_mac', '').strip()
         current_ip = getattr(self, 'selected_device_ip', '').strip()
         new_ip = self.txt_ip.text().strip()
@@ -1224,13 +1090,13 @@ class SADPGui(QMainWindow):
             QMessageBox.warning(self, self.t("password_req_title"), self.t("password_req_msg"))
             return
 
-        if not dhcp:
-            if not new_ip or len(new_ip.split('.')) != 4:
-                QMessageBox.warning(self, self.t("invalid_ip_title"), self.t("invalid_ip_msg"))
-                return
-            if not subnet or len(subnet.split('.')) != 4:
-                QMessageBox.warning(self, self.t("invalid_subnet_title"), self.t("invalid_subnet_msg"))
-                return
+        invalid = validate_network_settings(new_ip, subnet, gateway, port, dhcp)
+        if invalid:
+            QMessageBox.warning(self, self.t('invalid_parameters_title'), self.t(invalid))
+            return
+        if not normalize_mac(mac):
+            QMessageBox.warning(self, self.t('invalid_parameters_title'), self.t('invalid_mac_msg'))
+            return
 
         binario_path = obtener_binario_path()
         if not binario_path:
@@ -1238,6 +1104,7 @@ class SADPGui(QMainWindow):
             return
 
         self.btn_modify.setEnabled(False)
+        self._set_operation_busy(True)
         self.progress_bar.setVisible(True)
         self.status_label.setText(self.t("sending_changes", mac=mac, new_ip=new_ip))
 
@@ -1250,12 +1117,14 @@ class SADPGui(QMainWindow):
             mask=subnet,
             gateway=gateway,
             port=port,
-            dhcp=dhcp
+            dhcp=dhcp,
+            lang=self.current_lang
         )
-        self.modify_thread.finished.connect(self._modificacion_finalizada)
+        self.modify_thread.result.connect(self._modificacion_finalizada)
         self.modify_thread.start()
 
     def _modificacion_finalizada(self, exito: bool, mensaje: str):
+        self._set_operation_busy(False)
         self.btn_modify.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.txt_password.clear()
@@ -1279,12 +1148,18 @@ class SADPGui(QMainWindow):
 
     def desvincular_dispositivo(self):
         """Desvincula el dispositivo de la cuenta Hik-Connect/Ezviz usando la contraseña admin"""
+        if self._operation_busy or (self.scan_thread and self.scan_thread.isRunning()):
+            return
         mac = getattr(self, 'selected_device_mac', '').strip()
         current_ip = getattr(self, 'selected_device_ip', '').strip()
         password = self.txt_password.text()
 
         if not mac:
             QMessageBox.warning(self, self.t("select_device_title"), self.t("select_device_msg"))
+            return
+
+        if not normalize_mac(mac):
+            QMessageBox.warning(self, self.t('invalid_parameters_title'), self.t('invalid_mac_msg'))
             return
 
         if not password:
@@ -1306,6 +1181,7 @@ class SADPGui(QMainWindow):
             return
 
         self.btn_unbind.setEnabled(False)
+        self._set_operation_busy(True)
         self.progress_bar.setVisible(True)
         self.status_label.setText(self.t("unbinding_device", mac=mac))
 
@@ -1313,12 +1189,14 @@ class SADPGui(QMainWindow):
             binario_path=binario_path,
             current_ip=current_ip,
             mac=mac,
-            password=password
+            password=password,
+            lang=self.current_lang
         )
-        self.unbind_thread.finished.connect(self._desvinculacion_finalizada)
+        self.unbind_thread.result.connect(self._desvinculacion_finalizada)
         self.unbind_thread.start()
 
     def _desvinculacion_finalizada(self, exito: bool, mensaje: str):
+        self._set_operation_busy(False)
         self.btn_unbind.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.txt_password.clear()
@@ -1329,6 +1207,14 @@ class SADPGui(QMainWindow):
         else:
             QMessageBox.critical(self, self.t("unbind_error_title"), mensaje)
             self.status_label.setText(self.t("unbind_error_title"))
+
+    def _set_operation_busy(self, busy):
+        self._operation_busy = busy
+        self.panel_modificar.setEnabled(not busy)
+        self.tabla.setEnabled(not busy)
+        self.btn_scan.setEnabled(not busy)
+        self.btn_modify.setEnabled(not busy)
+        self.btn_unbind.setEnabled(not busy)
 
     def recuperar_contrasena(self, link=None):
         """Explica el flujo local offline para recuperar contraseña"""
@@ -1354,10 +1240,7 @@ class SADPGui(QMainWindow):
             if not filename:
                 return
 
-            fieldnames = [
-                'ip', 'mac', 'modelo', 'tipo', 'estado', 'puerto', 
-                'http_port', 'version', 'subnet', 'gateway', 'dhcp'
-            ]
+            fieldnames = CSV_FIELDS
 
             rows_to_write = []
             for disp in self.dispositivos:

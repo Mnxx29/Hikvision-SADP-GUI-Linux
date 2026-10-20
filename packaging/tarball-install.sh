@@ -1,76 +1,22 @@
 #!/bin/bash
-# Script de instalación portátil (para distribuciones basadas en tar.gz)
-set -e
-
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Por favor ejecuta como root: sudo bash install.sh"
+set -euo pipefail
+[ "$EUID" -eq 0 ] || { echo 'Run: sudo bash install.sh' >&2; exit 1; }
+if command -v dpkg-query >/dev/null && dpkg-query -W -f='${Status}' hikvision-sadp-gui 2>/dev/null | grep -q 'install ok installed'; then
+    echo 'A Debian package is already installed. Use apt to upgrade it.' >&2
     exit 1
 fi
-
+python3 -c 'import sys; assert sys.version_info >= (3, 9); import PyQt6.QtWidgets; from PyQt6.QtCore import PYQT_VERSION; assert PYQT_VERSION >= 0x060400' || { echo 'Install Python >=3.9 and PyQt6 >=6.4 using your distribution package manager.' >&2; exit 1; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="/opt/hikvision-sadp"
-
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║   Instalando Hikvision SADP GUI para Linux                 ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
-
-# 1. Crear directorios
-mkdir -p "$INSTALL_DIR"
-mkdir -p /usr/local/bin
-mkdir -p /usr/share/applications
-mkdir -p /usr/share/pixmaps
-
-# 2. Copiar archivos de la aplicación
-echo "➡️ Copiando archivos a $INSTALL_DIR..."
-cp "$SCRIPT_DIR/gui_sadp.py" "$INSTALL_DIR/"
-cp "$SCRIPT_DIR/sadp_discover.py" "$INSTALL_DIR/"
-cp "$SCRIPT_DIR/i18n.py" "$INSTALL_DIR/"
-if [ -f "$SCRIPT_DIR/sadp-linux-amd64" ]; then
-    cp "$SCRIPT_DIR/sadp-linux-amd64" "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/sadp-linux-amd64"
-    if command -v setcap >/dev/null 2>&1; then
-        setcap cap_net_raw=ep "$INSTALL_DIR/sadp-linux-amd64" 2>/dev/null || true
-    fi
-fi
-if [ -f "$SCRIPT_DIR/hikvision-sadp.png" ]; then
-    cp "$SCRIPT_DIR/hikvision-sadp.png" "$INSTALL_DIR/"
-    cp "$SCRIPT_DIR/hikvision-sadp.png" "/usr/share/pixmaps/"
-fi
-
-# 3. Copiar lanzador
-echo "➡️ Instalando comando sadp-gui en /usr/local/bin/..."
-cp "$SCRIPT_DIR/sadp-gui" /usr/local/bin/sadp-gui
-chmod +x /usr/local/bin/sadp-gui
-
-# 4. Copiar Desktop Entry
-echo "➡️ Instalando acceso directo en el menú de aplicaciones..."
-cp "$SCRIPT_DIR/sadp-gui.desktop" /usr/share/applications/
-chmod 644 /usr/share/applications/sadp-gui.desktop
-
-# 5. Configurar sudoers para ruteo multicast
-echo "➡️ Configurando reglas sudoers en /etc/sudoers.d/sadp-gui-routing..."
-SUDOERS_FILE="/etc/sudoers.d/sadp-gui-routing"
-cat > "$SUDOERS_FILE" << 'EOF'
-ALL ALL=(root) NOPASSWD: /usr/sbin/ip route add 239.255.255.250/32 *, /usr/sbin/ip route change 239.255.255.250/32 *, /bin/ip route add 239.255.255.250/32 *, /bin/ip route change 239.255.255.250/32 *, /usr/sbin/ufw allow in on *, /usr/sbin/ufw allow from any port 37020 proto udp, /sbin/sysctl *, /usr/sbin/sysctl *
-EOF
-chmod 0440 "$SUDOERS_FILE"
-
-# 6. Configurar UFW si existe
-if command -v ufw >/dev/null 2>&1; then
-    echo "➡️ Configurando reglas UFW..."
-    ufw allow 37020/udp >/dev/null 2>&1 || true
-    ufw allow from any port 37020 proto udp >/dev/null 2>&1 || true
-    ufw allow out proto udp to 224.0.0.0/4 >/dev/null 2>&1 || true
-fi
-
-# 7. Actualizar base de datos de escritorio
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
-fi
-
-echo ""
-echo "✅ Instalación completada exitosamente."
-echo "   Puedes iniciar la herramienta escribiendo 'sadp-gui' en tu terminal o"
-echo "   buscando 'Hikvision SADP' en tu menú de aplicaciones."
-echo ""
+INSTALL_DIR=/opt/hikvision-sadp
+mkdir -p "$INSTALL_DIR" /usr/local/bin /usr/share/applications /usr/share/pixmaps
+for file in gui_sadp.py sadp_discover.py sadp_operations.py network_setup.py i18n.py BUILD-INFO.txt LICENSE HIKVISION-TOOLING-LICENSE; do
+    install -m 644 "$SCRIPT_DIR/$file" "$INSTALL_DIR/"
+done
+install -m 755 "$SCRIPT_DIR/sadp-linux-amd64" "$INSTALL_DIR/"
+install -m 644 "$SCRIPT_DIR/hikvision-sadp.png" "$INSTALL_DIR/"
+install -m 644 "$SCRIPT_DIR/hikvision-sadp.png" /usr/share/pixmaps/
+python3 "$INSTALL_DIR/network_setup.py" configure
+install -m 755 "$SCRIPT_DIR/sadp-gui" /usr/local/bin/sadp-gui
+install -m 644 "$SCRIPT_DIR/sadp-gui.desktop" /usr/share/applications/
+if command -v update-desktop-database >/dev/null; then update-desktop-database -q /usr/share/applications; fi
+echo 'Installed. Start sadp-gui as your normal user.'

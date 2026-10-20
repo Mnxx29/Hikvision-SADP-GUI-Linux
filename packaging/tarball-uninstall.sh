@@ -1,22 +1,14 @@
 #!/bin/bash
-# Script de desinstalación para la versión tarball
-set -e
-
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Por favor ejecuta como root: sudo bash uninstall.sh"
+set -euo pipefail
+[ "$EUID" -eq 0 ] || { echo 'Run: sudo bash uninstall.sh' >&2; exit 1; }
+if command -v dpkg-query >/dev/null && dpkg-query -W -f='${Status}' hikvision-sadp-gui 2>/dev/null | grep -q 'install ok installed'; then
+    echo 'Use sudo apt remove hikvision-sadp-gui for a Debian installation.' >&2
     exit 1
 fi
-
-echo "🗑️ Desinstalando Hikvision SADP GUI..."
-
-rm -rf /opt/hikvision-sadp
-rm -f /usr/local/bin/sadp-gui
-rm -f /usr/share/applications/sadp-gui.desktop
-rm -f /usr/share/pixmaps/hikvision-sadp.png
-rm -f /etc/sudoers.d/sadp-gui-routing
-
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+if [ -f /opt/hikvision-sadp/network_setup.py ]; then
+    python3 /opt/hikvision-sadp/network_setup.py remove
 fi
-
-echo "✅ Desinstalación completada."
+rm -rf -- /opt/hikvision-sadp
+rm -f -- /usr/local/bin/sadp-gui /usr/share/applications/sadp-gui.desktop /usr/share/pixmaps/hikvision-sadp.png /etc/sudoers.d/sadp-gui-routing
+if command -v update-desktop-database >/dev/null; then update-desktop-database -q /usr/share/applications; fi
+echo 'SADP removed.'

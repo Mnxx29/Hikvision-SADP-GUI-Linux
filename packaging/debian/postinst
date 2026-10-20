@@ -1,35 +1,13 @@
 #!/bin/sh
-set -e
-
+set -eu
 case "$1" in
     configure)
-        # 1. Configurar regla sudoers para comandos de red sin contraseña
-        SUDOERS_FILE="/etc/sudoers.d/sadp-gui-routing"
-        cat > "$SUDOERS_FILE" << 'EOF'
-ALL ALL=(root) NOPASSWD: /usr/sbin/ip route add 239.255.255.250/32 *, /usr/sbin/ip route change 239.255.255.250/32 *, /bin/ip route add 239.255.255.250/32 *, /bin/ip route change 239.255.255.250/32 *, /usr/sbin/ufw allow in on *, /usr/sbin/ufw allow from any port 37020 proto udp, /sbin/sysctl *, /usr/sbin/sysctl *
-EOF
-        chmod 0440 "$SUDOERS_FILE"
-
-        # 2. Asignar cap_net_raw al binario Go si setcap está disponible
-        if command -v setcap >/dev/null 2>&1; then
-            setcap cap_net_raw=ep /opt/hikvision-sadp/sadp-linux-amd64 2>/dev/null || true
-        fi
-
-        # 3. Configurar reglas de firewall UFW si está activo
-        if command -v ufw >/dev/null 2>&1; then
-            ufw allow 37020/udp >/dev/null 2>&1 || true
-            ufw allow from any port 37020 proto udp >/dev/null 2>&1 || true
-            ufw allow out proto udp to 224.0.0.0/4 >/dev/null 2>&1 || true
-        fi
-
-        # 4. Actualizar cache de aplicaciones de escritorio y de iconos
+        python3 /opt/hikvision-sadp/network_setup.py configure
         if command -v update-desktop-database >/dev/null 2>&1; then
-            update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+            update-desktop-database -q /usr/share/applications
         fi
         if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
         fi
         ;;
 esac
-
-exit 0

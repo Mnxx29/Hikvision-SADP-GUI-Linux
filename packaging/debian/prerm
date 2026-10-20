@@ -1,4 +1,5 @@
 #!/bin/sh
-set -e
-
-exit 0
+set -eu
+case "$1" in
+    remove|deconfigure) python3 /opt/hikvision-sadp/network_setup.py remove ;;
+esac
