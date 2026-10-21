@@ -6,6 +6,8 @@ Descubrimiento nativo de dispositivos compatibles con Hikvision mediante Python 
 
 ![Aplicación](docs/GUI.png)
 
+La interfaz usa una identidad propia en carbón y rojo. Cambia el idioma desde `⋯ → Idioma`; la elección se guarda automáticamente.
+
 ## Requisitos y validación
 
 - Python **3.9+**, PyQt6 **6.4+**, Linux con IPv4 e `iproute2`.
@@ -19,7 +21,7 @@ Descubrimiento nativo de dispositivos compatibles con Hikvision mediante Python 
 Descarga el `.deb` desde [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases):
 
 ```bash
-sudo apt install ./hikvision-sadp-gui_1.0.3_amd64.deb
+sudo apt install ./hikvision-sadp-gui_1.0.4_amd64.deb
 sadp-gui
 ```
 

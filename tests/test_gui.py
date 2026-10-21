@@ -13,7 +13,7 @@ try:
 except ImportError:
     raise unittest.SkipTest('PyQt6 is required for the desktop tests')
 
-from gui_sadp import SADPGui, ModifyThread, UnbindThread, ScanThread
+from gui_sadp import SADPGui, ModifyThread, UnbindThread, ScanThread, APP_ID
 from i18n import TRANSLATIONS
 
 DEVICE = {'ip': '192.168.1.64', 'mac': 'aa:bb:cc:dd:ee:ff', 'nombre': 'Camera',
@@ -83,6 +83,50 @@ class GuiTests(unittest.TestCase):
 
     def test_translation_keys_match(self):
         self.assertEqual(set(TRANSLATIONS['en']), set(TRANSLATIONS['es']))
+
+    def test_language_menu_switches_and_persists_full_language_names(self):
+        for lang, label in (('es', 'Español'), ('en', 'English')):
+            action = self.window.language_actions[lang]
+            self.assertEqual(action.text(), label)
+            action.trigger()
+            self.assertEqual(self.window.current_lang, lang)
+            self.assertEqual(self.window.settings.value('appLanguage'), lang)
+            self.assertTrue(action.isChecked())
+            self.assertEqual(self.window.language_menu.title(), 'Idioma' if lang == 'es' else 'Language')
+        self.assertIs(self.window.btn_settings.menu(), self.window.settings_menu)
+
+    def test_desktop_identity_matches_installed_launcher(self):
+        self.assertEqual(self.app.desktopFileName(), APP_ID)
+        self.assertEqual(self.app.applicationName(), APP_ID)
+        self.assertFalse(self.app.windowIcon().isNull())
+        self.assertFalse(self.window.windowIcon().isNull())
+        desktop = pathlib.Path(__file__).resolve().parents[1] / 'packaging' / 'sadp-gui.desktop'
+        self.assertEqual(desktop.stem, APP_ID)
+        self.assertIn('StartupWMClass=' + APP_ID, desktop.read_text())
+
+    def test_buttons_fit_both_languages_and_table_can_scroll_beside_panel(self):
+        self.window.show()
+        self.window.resize(960, 600)
+        self.window.panel_modificar.show()
+        for lang in ('en', 'es'):
+            self.window.cambiar_idioma(lang)
+            self.app.processEvents()
+            for button in (self.window.btn_scan, self.window.btn_export,
+                           self.window.btn_unbind, self.window.btn_toggle_panel):
+                self.assertGreaterEqual(button.width(), button.sizeHint().width(), button.text())
+        self.assertFalse(self.window.tabla.wordWrap())
+        self.assertGreaterEqual(self.window.tabla.columnWidth(2), 148)
+        self.assertGreater(self.window.tabla.horizontalScrollBar().maximum(), 0)
+
+    def test_icon_has_transparent_exterior_and_opaque_artwork(self):
+        from PyQt6.QtGui import QImage
+        assets = pathlib.Path(__file__).resolve().parents[1] / 'assets'
+        for filename in ('hikvision-sadp.png', 'hikvision-sadp-128.png', 'hikvision-sadp-256.png'):
+            image = QImage(str(assets / filename))
+            self.assertFalse(image.isNull())
+            self.assertTrue(image.hasAlphaChannel())
+            self.assertEqual(image.pixelColor(0, 0).alpha(), 0)
+            self.assertGreaterEqual(image.pixelColor(image.width() // 2, image.height() // 2).alpha(), 250)
 
 
 class WorkerTests(unittest.TestCase):

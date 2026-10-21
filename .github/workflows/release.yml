@@ -27,6 +27,8 @@ jobs:
       - name: Check release version
         run: |
           VERSION="$(cat VERSION)"
+          test -f "docs/release-$VERSION.md"
+          printf 'RELEASE_NOTES=docs/release-%s.md\n' "$VERSION" >> "$GITHUB_ENV"
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             test "${GITHUB_REF#refs/tags/v}" = "$VERSION"
           fi
@@ -47,4 +49,4 @@ jobs:
             dist/*.deb
             dist/*.tar.gz
             dist/SHA256SUMS.txt
-          body_path: docs/release-1.0.3.md
+          body_path: ${{ env.RELEASE_NOTES }}

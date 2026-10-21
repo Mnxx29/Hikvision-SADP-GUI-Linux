@@ -6,17 +6,20 @@ English is the default language, with full Spanish support and dynamic switching
 TRANSLATIONS = {
     "en": {
         # App & Window
-        "app_title": "Hikvision SADP Tool for Linux",
-        "total_devices": "Total number of online devices:",
+        "app_title": "SADP for Linux",
+        "brand_subtitle": "Hikvision device discovery · by mnxx29",
+        "settings": "Settings",
+        "language": "Language",
+        "total_devices": "Online devices:",
         "unbind": "Unbind",
         "export": "Export",
-        "refresh": "Refresh",
+        "refresh": "Scan network",
         "filter": "Filter",
-        "modify_network": "✏️ Modify Network",
-        "hide_panel": "✏️ Hide Panel",
+        "modify_network": "Network settings",
+        "hide_panel": "Hide settings",
         
         # Status Messages
-        "press_refresh": "Click 'Refresh' to scan network",
+        "press_refresh": "Scan the network to discover devices",
         "scanning": "Scanning devices... please wait",
         "found_devices": "✅ Found {count} device(s)",
         "no_devices": "⚠️ No Hikvision devices found on the network",
@@ -131,17 +134,20 @@ TRANSLATIONS = {
     },
     "es": {
         # App & Window
-        "app_title": "SADP Tool para Linux - Hikvision",
-        "total_devices": "Total de dispositivos en línea:",
+        "app_title": "SADP for Linux",
+        "brand_subtitle": "Descubrimiento de equipos Hikvision · por mnxx29",
+        "settings": "Ajustes",
+        "language": "Idioma",
+        "total_devices": "Equipos en línea:",
         "unbind": "Desvincular",
         "export": "Exportar",
-        "refresh": "Actualizar",
+        "refresh": "Escanear red",
         "filter": "Filtrar",
-        "modify_network": "✏️ Modificar Red",
-        "hide_panel": "✏️ Ocultar Panel",
+        "modify_network": "Configurar red",
+        "hide_panel": "Ocultar ajustes",
         
         # Status Messages
-        "press_refresh": "Presiona 'Actualizar' para escanear la red",
+        "press_refresh": "Escanea la red para descubrir equipos",
         "scanning": "Escaneando dispositivos... por favor espera",
         "found_devices": "✅ Se encontraron {count} dispositivo(s)",
         "no_devices": "⚠️ No se encontraron dispositivos Hikvision en la red",

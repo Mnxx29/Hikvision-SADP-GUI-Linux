@@ -15,8 +15,14 @@ done
 install -m 755 "$SCRIPT_DIR/sadp-linux-amd64" "$INSTALL_DIR/"
 install -m 644 "$SCRIPT_DIR/hikvision-sadp.png" "$INSTALL_DIR/"
 install -m 644 "$SCRIPT_DIR/hikvision-sadp.png" /usr/share/pixmaps/
+for size in 128 256; do
+    ICON_DIR="/usr/share/icons/hicolor/${size}x${size}/apps"
+    mkdir -p "$ICON_DIR"
+    install -m 644 "$SCRIPT_DIR/hikvision-sadp-$size.png" "$ICON_DIR/hikvision-sadp.png"
+done
 python3 "$INSTALL_DIR/network_setup.py" configure
 install -m 755 "$SCRIPT_DIR/sadp-gui" /usr/local/bin/sadp-gui
 install -m 644 "$SCRIPT_DIR/sadp-gui.desktop" /usr/share/applications/
 if command -v update-desktop-database >/dev/null; then update-desktop-database -q /usr/share/applications; fi
+if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true; fi
 echo 'Installed. Start sadp-gui as your normal user.'

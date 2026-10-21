@@ -10,9 +10,9 @@ from xml.sax.saxutils import escape
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTableWidget, 
                              QTableWidgetItem, QHeaderView, QMessageBox, QLabel, QProgressBar,
-                             QFrame, QScrollArea, QCheckBox, QLineEdit, QFileDialog, QComboBox)
+                             QFrame, QScrollArea, QCheckBox, QLineEdit, QFileDialog, QMenu, QToolButton)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QIcon, QAction, QActionGroup
 
 from i18n import t, translate_device_type, traducir_tipo_dispositivo
 from sadp_operations import (CSV_FIELDS, normalize_mac, parse_update_response,
@@ -180,159 +180,91 @@ class ScanThread(QThread):
             return devices
 
 
+APP_ID = "sadp-gui"
+APP_NAME = "SADP for Linux"
+
+
+def configure_application(app):
+    """Match the desktop entry before Qt creates a native window (Wayland/X11)."""
+    app.setApplicationName(APP_ID)
+    app.setApplicationDisplayName(APP_NAME)
+    app.setDesktopFileName(APP_ID)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(script_dir, "hikvision-sadp.png"),
+                 os.path.join(script_dir, "assets", "hikvision-sadp.png"),
+                 "/usr/share/pixmaps/hikvision-sadp.png"):
+        if os.path.isfile(path):
+            app.setWindowIcon(QIcon(path))
+            break
+
+
 class SADPGui(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setGeometry(100, 100, 1120, 650)
+        configure_application(QApplication.instance())
+        self.setGeometry(100, 100, 1120, 700)
+        self.setMinimumSize(960, 600)
         self.scan_thread = None
         self._operation_busy = False
         self.settings = QSettings("sadp", "sadp-gui-v2")
 
-        # Cargar icono de ventana si existe
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        icon_paths = [
-            os.path.join(script_dir, "hikvision-sadp.png"),
-            os.path.join(script_dir, "assets", "hikvision-sadp.png"),
-            "/usr/share/pixmaps/hikvision-sadp.png",
-            "/usr/share/icons/hicolor/128x128/apps/hikvision-sadp.png",
-            "/opt/hikvision-sadp/hikvision-sadp.png"
-        ]
-        for ipath in icon_paths:
-            if os.path.exists(ipath):
-                self.setWindowIcon(QIcon(ipath))
-                break
-        
+        self.setWindowIcon(QApplication.windowIcon())
+
         # Cargar idioma preferido (inglés por defecto desde la raíz)
         self.current_lang = str(self.settings.value("appLanguage", "en"))
         if self.current_lang not in ("en", "es"):
             self.current_lang = "en"
         
-        # --- Aplicar QSS Estilos Premium ---
+        # A compact utility workspace with the camera icon's charcoal/red palette.
         self.setStyleSheet("""
-            QMainWindow {
-                background-color: #FFFFFF;
+            QMainWindow { background: #F4F6F8; }
+            QLabel, QCheckBox, QLineEdit, QPushButton, QToolButton, QMenu, QTableWidget {
+                font-family: 'Inter', 'Ubuntu', 'Segoe UI', sans-serif;
+                font-size: 12px; color: #243342;
             }
-            QLabel {
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', 'Arial', sans-serif;
-                font-size: 12px;
-                color: #374151;
-            }
+            QLabel#BrandTitle { font-size: 20px; font-weight: bold; color: #18222D; }
+            QLabel#BrandSubtitle { font-size: 11px; color: #657484; }
+            QLabel#DeviceCount { background: #E8EDF1; border-radius: 8px; padding: 9px 12px; }
+            QLabel#ScanStatus { color: #657484; padding: 2px 0; }
             QLineEdit {
-                background-color: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 4px;
-                padding: 6px;
-                color: #111827;
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
+                background: white; border: 1px solid #CED6DE; border-radius: 6px;
+                padding: 7px 9px; selection-background-color: #FBE8EB;
+                selection-color: #922E38;
             }
-            QLineEdit:focus {
-                border: 1px solid #0F83E6;
+            QLineEdit:focus { border-color: #C83B46; }
+            QLineEdit:disabled { background: #EDF0F3; color: #87929F; border-color: #E1E6EB; }
+            QCheckBox { spacing: 6px; }
+            QPushButton { border-radius: 6px; padding: 8px 14px; }
+            QPushButton.btn-primary { background: #C83B46; color: white; border: 1px solid #C83B46; font-weight: bold; }
+            QPushButton.btn-primary:hover { background: #B1313D; border-color: #B1313D; }
+            QPushButton.btn-primary:pressed { background: #922E38; }
+            QPushButton.btn-primary:disabled { background: #E8C6CA; color: #FAF3F4; border-color: #E8C6CA; }
+            QPushButton.btn-outline, QToolButton {
+                background: white; border: 1px solid #CED6DE; border-radius: 6px;
             }
-            QLineEdit:disabled {
-                background-color: #F3F4F6;
-                color: #9CA3AF;
-                border: 1px solid #E5E7EB;
-            }
-            QCheckBox {
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
-                color: #374151;
-                spacing: 5px;
-            }
-            QComboBox {
-                background-color: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 4px;
-                padding: 4px 10px;
-                color: #374151;
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
-            }
-            QComboBox:hover {
-                border-color: #9CA3AF;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 18px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                selection-background-color: #E0F2FE;
-                selection-color: #0369A1;
-            }
-            QPushButton.btn-coral {
-                background-color: #E58B8B;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
-            }
-            QPushButton.btn-coral:hover {
-                background-color: #DB7A7A;
-            }
-            QPushButton.btn-coral:pressed {
-                background-color: #C66B6B;
-            }
-            QPushButton.btn-coral:disabled {
-                background-color: #F3D8D8;
-                color: #F9C0C0;
-            }
-            QPushButton.btn-outline {
-                background-color: #FFFFFF;
-                color: #374151;
-                border: 1px solid #D1D5DB;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
-            }
-            QPushButton.btn-outline:hover {
-                background-color: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            QPushButton.btn-outline:pressed {
-                background-color: #F3F4F6;
-            }
-            QPushButton.btn-outline:disabled {
-                background-color: #FFFFFF;
-                color: #D1D5DB;
-                border-color: #E5E7EB;
-            }
+            QPushButton.btn-outline:hover, QToolButton:hover { background: #EAF0F4; border-color: #A8B5C1; }
+            QPushButton.btn-outline:pressed { background: #DFE6ED; }
+            QPushButton.btn-outline:disabled { color: #A7B1BC; border-color: #E1E6EB; }
+            QToolButton { font-size: 22px; padding: 0; }
+            QToolButton::menu-indicator { image: none; width: 0; }
+            QMenu { background: white; border: 1px solid #CED6DE; padding: 6px; }
+            QMenu::item { padding: 8px 26px; border-radius: 4px; }
+            QMenu::item:selected { background: #FBE8EB; color: #922E38; }
+            QMenu::indicator { width: 14px; height: 14px; }
             QTableWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                gridline-color: #F3F4F6;
-                font-family: 'Segoe UI', 'Inter', 'Ubuntu', sans-serif;
-                font-size: 12px;
-                color: #111827;
+                background: white; alternate-background-color: #F7F9FB;
+                border: 1px solid #DCE3E9; border-radius: 6px;
+                gridline-color: #EDF1F4; color: #243342;
             }
             QHeaderView::section {
-                background-color: #47505A;
-                color: #FFFFFF;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px;
-                border: 1px solid #3C444D;
+                background: #243342; color: #F5F7FA; font-weight: bold;
+                font-size: 11px; padding: 9px 6px; border: none;
+                border-right: 1px solid #344554;
             }
-            QTableWidget::item:selected {
-                background-color: #E0F2FE;
-                color: #0369A1;
-            }
-            QProgressBar {
-                border: 1px solid #E5E7EB;
-                border-radius: 4px;
-                text-align: center;
-                background-color: #F3F4F6;
-            }
-            QProgressBar::chunk {
-                background-color: #0F83E6;
-                border-radius: 3px;
-            }
+            QTableWidget::item { padding: 3px; }
+            QTableWidget::item:selected { background: #FBE8EB; color: #922E38; }
+            QProgressBar { border: none; border-radius: 3px; background: #E5EAF0; max-height: 5px; }
+            QProgressBar::chunk { background: #C83B46; border-radius: 3px; }
         """)
 
         # Main Layout Horizontal (Lado Izquierdo = Tabla, Lado Derecho = Parámetros de Red)
@@ -350,61 +282,84 @@ class SADPGui(QMainWindow):
         self.left_layout.setContentsMargins(0, 0, 0, 0)
         self.left_layout.setSpacing(10)
 
-        # 1. Barra de herramientas superior (Estilo SADP original)
-        self.top_layout = QHBoxLayout()
-        
-        # Etiqueta de conteo
+        # Brand and quiet preferences are separate from device actions.
+        self.brand_layout = QHBoxLayout()
+        self.brand_layout.setSpacing(12)
+        self.brand_icon = QLabel()
+        self.brand_icon.setPixmap(self.windowIcon().pixmap(44, 44))
+        self.brand_icon.setFixedSize(44, 44)
+        self.brand_layout.addWidget(self.brand_icon)
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(2)
+        self.lbl_brand = QLabel(APP_NAME)
+        self.lbl_brand.setObjectName("BrandTitle")
+        self.lbl_subtitle = QLabel()
+        self.lbl_subtitle.setObjectName("BrandSubtitle")
+        brand_text.addWidget(self.lbl_brand)
+        brand_text.addWidget(self.lbl_subtitle)
+        self.brand_layout.addLayout(brand_text)
+        self.brand_layout.addStretch()
         self.lbl_count = QLabel()
-        self.top_layout.addWidget(self.lbl_count)
-        
+        self.lbl_count.setObjectName("DeviceCount")
+        self.brand_layout.addWidget(self.lbl_count)
+
+        self.btn_settings = QToolButton()
+        self.btn_settings.setText("⋯")
+        self.btn_settings.setFixedSize(36, 36)
+        self.btn_settings.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.settings_menu = QMenu(self)
+        self.language_menu = self.settings_menu.addMenu("")
+        self.language_menu.setMinimumWidth(180)
+        self.language_group = QActionGroup(self)
+        self.language_actions = {}
+        for code, label in (("en", "English"), ("es", "Español")):
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setData(code)
+            self.language_group.addAction(action)
+            self.language_menu.addAction(action)
+            action.triggered.connect(lambda checked, lang=code: self.cambiar_idioma(lang))
+            self.language_actions[code] = action
+        self.btn_settings.setMenu(self.settings_menu)
+        self.brand_layout.addWidget(self.btn_settings)
+        self.left_layout.addLayout(self.brand_layout)
+
+        self.top_layout = QHBoxLayout()
+        self.top_layout.setSpacing(8)
+        self.btn_scan = QPushButton()
+        self.btn_scan.setProperty("class", "btn-primary")
+        self.btn_scan.setMinimumHeight(36)
+        self.btn_scan.clicked.connect(self.ejecutar_escaneo)
+        self.top_layout.addWidget(self.btn_scan)
+
+        self.txt_filter = QLineEdit()
+        self.txt_filter.setMinimumWidth(140)
+        self.txt_filter.setMaximumWidth(320)
+        self.txt_filter.setMinimumHeight(22)
+        self.txt_filter.setClearButtonEnabled(True)
+        self.txt_filter.textChanged.connect(self.filtrar_tabla)
+        self.top_layout.addWidget(self.txt_filter, 1)
         self.top_layout.addStretch()
 
-        # Selector de Idioma (Language switcher)
-        self.combo_lang = QComboBox()
-        self.combo_lang.addItem("🌐 English", "en")
-        self.combo_lang.addItem("🌐 Español", "es")
-        self.combo_lang.setMinimumHeight(35)
-        self.combo_lang.setCurrentIndex(0 if self.current_lang == "en" else 1)
-        self.combo_lang.currentIndexChanged.connect(self.cambiar_idioma)
-        self.top_layout.addWidget(self.combo_lang)
-
-        # Botón Unbind
-        self.btn_unbind = QPushButton()
-        self.btn_unbind.setProperty("class", "btn-coral")
-        self.btn_unbind.setMinimumHeight(35)
-        self.btn_unbind.setEnabled(False)
-        self.btn_unbind.clicked.connect(self.desvincular_dispositivo)
-        self.top_layout.addWidget(self.btn_unbind)
-
-        # Botón Export
         self.btn_export = QPushButton()
-        self.btn_export.setProperty("class", "btn-coral")
-        self.btn_export.setMinimumHeight(35)
+        self.btn_export.setProperty("class", "btn-outline")
+        self.btn_export.setMinimumHeight(36)
         self.btn_export.setEnabled(False)
         self.btn_export.clicked.connect(self.exportar_csv)
         self.top_layout.addWidget(self.btn_export)
 
-        # Botón Refresh
-        self.btn_scan = QPushButton()
-        self.btn_scan.setProperty("class", "btn-outline")
-        self.btn_scan.setMinimumHeight(35)
-        self.btn_scan.clicked.connect(self.ejecutar_escaneo)
-        self.top_layout.addWidget(self.btn_scan)
+        self.btn_unbind = QPushButton()
+        self.btn_unbind.setProperty("class", "btn-outline")
+        self.btn_unbind.setMinimumHeight(36)
+        self.btn_unbind.setEnabled(False)
+        self.btn_unbind.clicked.connect(self.desvincular_dispositivo)
+        self.top_layout.addWidget(self.btn_unbind)
 
-        # Entrada de Filtrado (Filter)
-        self.txt_filter = QLineEdit()
-        self.txt_filter.setMaximumWidth(160)
-        self.txt_filter.setMinimumHeight(30)
-        self.txt_filter.textChanged.connect(self.filtrar_tabla)
-        self.top_layout.addWidget(self.txt_filter)
-
-        # Botón Toggle Panel (Modificar Red)
         self.btn_toggle_panel = QPushButton()
         self.btn_toggle_panel.setProperty("class", "btn-outline")
-        self.btn_toggle_panel.setMinimumHeight(35)
+        self.btn_toggle_panel.setMinimumHeight(36)
         self.btn_toggle_panel.clicked.connect(self.toggle_panel)
         self.top_layout.addWidget(self.btn_toggle_panel)
-
         self.left_layout.addLayout(self.top_layout)
 
         # 2. Barra de progreso
@@ -415,14 +370,21 @@ class SADPGui(QMainWindow):
 
         # 3. Etiqueta de estado
         self.status_label = QLabel()
+        self.status_label.setObjectName("ScanStatus")
         self.left_layout.addWidget(self.status_label)
 
         # 4. Tabla de dispositivos (8 columnas)
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(8)
+        self.tabla.setAlternatingRowColors(True)
+        self.tabla.setWordWrap(False)
+        self.tabla.verticalHeader().setDefaultSectionSize(33)
         
         header = self.tabla.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
+        for column, width in enumerate((35, 140, 148, 160, 160, 100, 80, 210)):
+            self.tabla.setColumnWidth(column, width)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.tabla.setColumnWidth(0, 35)
         header.setSectionsClickable(True)
@@ -440,6 +402,16 @@ class SADPGui(QMainWindow):
                 header.restoreState(state)
         except Exception:
             pass
+
+        # Older saved headers used Stretch, which compressed addresses when the
+        # network panel opened. Keep wider saved widths/order and readable minima.
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.tabla.setColumnWidth(0, 35)
+        header.setStretchLastSection(True)
+        for column, width in enumerate((35, 140, 148, 160, 160, 100, 80, 210)):
+            if header.sectionSize(column) < width:
+                header.resizeSection(column, width)
 
         # Restaurar columna/orden de ordenación
         try:
@@ -614,7 +586,7 @@ class SADPGui(QMainWindow):
 
         # Botón Modificar
         self.btn_modify = QPushButton()
-        self.btn_modify.setProperty("class", "btn-coral")
+        self.btn_modify.setProperty("class", "btn-primary")
         self.btn_modify.setMinimumHeight(35)
         self.btn_modify.setEnabled(False)
         self.btn_modify.clicked.connect(self.ejecutar_modificacion)
@@ -647,10 +619,9 @@ class SADPGui(QMainWindow):
         """Helper para obtener texto traducido en el idioma activo"""
         return t(key, lang=self.current_lang, **kwargs)
 
-    def cambiar_idioma(self, index: int):
+    def cambiar_idioma(self, new_lang: str):
         """Cambia el idioma de la aplicación y refresca la UI inmediatamente"""
-        new_lang = self.combo_lang.currentData()
-        if new_lang and new_lang != self.current_lang:
+        if new_lang in self.language_actions and new_lang != self.current_lang:
             self.current_lang = new_lang
             self.settings.setValue("appLanguage", new_lang)
             self.retranslate_ui()
@@ -658,7 +629,12 @@ class SADPGui(QMainWindow):
     def retranslate_ui(self):
         """Aplica las traducciones dinámicamente a todos los componentes de la interfaz"""
         self.setWindowTitle(self.t("app_title"))
-        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>{len(self.dispositivos)}</b>")
+        self.lbl_subtitle.setText(self.t("brand_subtitle"))
+        self.btn_settings.setToolTip(self.t("settings"))
+        self.btn_settings.setAccessibleName(self.t("settings"))
+        self.language_menu.setTitle(self.t("language"))
+        self.language_actions[self.current_lang].setChecked(True)
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#C83B46; font-size:16px;'>{len(self.dispositivos)}</b>")
         self.btn_unbind.setText(self.t("unbind"))
         self.btn_export.setText(self.t("export"))
         self.btn_scan.setText(self.t("refresh"))
@@ -729,7 +705,11 @@ class SADPGui(QMainWindow):
         self.lbl_password.setText(self.t("admin_password"))
         self.txt_password.setPlaceholderText(self.t("enter_password"))
         self.btn_modify.setText(self.t("modify"))
-        self.lbl_forgot.setText(f'<a href="#forgot" style="color: #0F83E6; text-decoration: none; font-weight: 500;">{self.t("forgot_password")}</a>')
+        self.lbl_forgot.setText(f'<a href="#forgot" style="color: #C83B46; text-decoration: none; font-weight: 500;">{self.t("forgot_password")}</a>')
+        for button in (self.btn_scan, self.btn_export, self.btn_unbind, self.btn_toggle_panel):
+            button.setMinimumWidth(button.sizeHint().width())
+        self.top_layout.invalidate()
+        self.top_layout.activate()
 
     def toggle_panel(self):
         """Muestra u oculta el panel lateral de modificación de red"""
@@ -765,7 +745,7 @@ class SADPGui(QMainWindow):
         self.btn_unbind.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.status_label.setText(self.t("scanning"))
-        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>0</b>")
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#C83B46; font-size:16px;'>0</b>")
         
         # Limpiar formulario
         self.txt_model.clear()
@@ -808,7 +788,7 @@ class SADPGui(QMainWindow):
     def mostrar_dispositivos(self, dispositivos):
         """Muestra los dispositivos en la tabla"""
         self.dispositivos = dispositivos
-        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#0F83E6; font-size:16px;'>{len(dispositivos)}</b>")
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#C83B46; font-size:16px;'>{len(dispositivos)}</b>")
         
         if not dispositivos:
             self.status_label.setText(self.t("no_devices"))
@@ -1273,6 +1253,7 @@ class SADPGui(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    configure_application(app)
     ventana = SADPGui()
     ventana.show()
     sys.exit(app.exec())

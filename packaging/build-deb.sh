@@ -45,6 +45,9 @@ TAR_DIR="$BUILD_DIR/$TAR_NAME"
 mkdir -p "$TAR_DIR"
 cp "$APP_DIR/"* "$TAR_DIR/"
 cp "$ROOT_DIR/packaging/sadp-gui" "$ROOT_DIR/packaging/sadp-gui.desktop" "$TAR_DIR/"
+for size in 128 256; do
+    install -m 644 "$ROOT_DIR/assets/hikvision-sadp-$size.png" "$TAR_DIR/"
+done
 install -m 755 "$ROOT_DIR/packaging/tarball-install.sh" "$TAR_DIR/install.sh"
 install -m 755 "$ROOT_DIR/packaging/tarball-uninstall.sh" "$TAR_DIR/uninstall.sh"
 cp "$ROOT_DIR/LICENSE" "$ROOT_DIR/README.md" "$ROOT_DIR/README_es.md" "$ROOT_DIR/CHANGELOG.md" "$BUILD_DIR/helper/HIKVISION-TOOLING-LICENSE" "$TAR_DIR/"

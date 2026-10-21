@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4 — 2026-10-21
+
+- Introduce a charcoal and red workspace with a branded header, separate device actions and alternating table rows.
+- Remove the icon's white exterior and supply transparent icons for launchers and windows.
+- Move English/Spanish selection into the settings menu, with complete language names and the saved preference retained.
+- Keep translated buttons at their required width and preserve readable table columns with horizontal scrolling beside the network panel.
+- Set Qt's desktop identity to match the launcher, including Wayland app ID and X11 startup class.
+- Install themed icons and refresh icon caches for tarball installations too.
+
 ## 1.0.3 — 2026-10-20
 
 - Remove passwordless sudoers and privileged commands from launch and scanning.

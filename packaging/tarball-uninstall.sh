@@ -10,5 +10,9 @@ if [ -f /opt/hikvision-sadp/network_setup.py ]; then
 fi
 rm -rf -- /opt/hikvision-sadp
 rm -f -- /usr/local/bin/sadp-gui /usr/share/applications/sadp-gui.desktop /usr/share/pixmaps/hikvision-sadp.png /etc/sudoers.d/sadp-gui-routing
+for size in 128 256; do
+    rm -f -- "/usr/share/icons/hicolor/${size}x${size}/apps/hikvision-sadp.png"
+done
 if command -v update-desktop-database >/dev/null; then update-desktop-database -q /usr/share/applications; fi
+if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true; fi
 echo 'SADP removed.'
