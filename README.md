@@ -1,12 +1,31 @@
-# Hikvision SADP GUI for Linux
+# SADP for Linux
+
+[![Tests](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/actions/workflows/test.yml)
+[![Latest release](https://img.shields.io/github/v/release/Mnxx29/Hikvision-SADP-GUI-Linux?label=release)](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases/latest)
+[![Tested on Ubuntu 24.04 LTS](https://img.shields.io/badge/tested-Ubuntu%2024.04%20LTS-E95420?logo=ubuntu&logoColor=white)](docs/validation-1.0.5.md)
+[![Linux amd64 package](https://img.shields.io/badge/package-Linux%20amd64-2E3440?logo=linux&logoColor=white)](#requirements-and-validation)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#requirements-and-validation)
+[![GUI: PyQt6](https://img.shields.io/badge/GUI-PyQt6-41CD52?logo=qt&logoColor=white)](#requirements-and-validation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **English** | [Español](README_es.md)
 
-Native Python/PyQt6 discovery for Hikvision-compatible devices on a local network. Devices appear as their responses arrive, and double-clicking an IP opens its web interface in the default browser. The GUI filters and sorts results, preserves custom model labels, and exports CSV reports including serial numbers.
+An independent Python/PyQt6 desktop application for discovering Hikvision-compatible devices on a local network. It runs natively on Linux and lists devices as their SADP responses arrive.
 
-![Application](docs/GUI.png)
+<p align="center">
+  <img src="docs/GUI.png" alt="SADP for Linux showing discovered devices" width="900">
+</p>
 
-The interface has its own charcoal/red styling. Change the language from `⋯ → Language`; the choice is saved automatically.
+## Highlights
+
+| Task | What the app does |
+| --- | --- |
+| Discover devices | Scans reachable local network segments with SADP multicast and broadcast, lists responses immediately, and deduplicates by MAC address. |
+| Inspect devices | Filters and sorts results; double-click an IPv4 address to open the device in the default browser. |
+| Keep an inventory | Saves local model labels and exports CSV reports with serial numbers. |
+| Work on Ubuntu | Installs a desktop launcher and themed icon; English and Español are available from `⋯ → Language`. |
+
+Network modification and Hik-Connect unbind controls are included, but real-device compatibility remains under validation. See [supported operations and limits](#supported-operations-and-limits).
 
 ## Requirements and validation
 
@@ -43,7 +62,7 @@ This builds the pinned helper and installs the same Debian package, using sudo f
 
 ## Network permissions and removal
 
-Installation needs root; starting and scanning do not. Version 1.0.3 removes `/etc/sudoers.d/sadp-gui-routing` from 1.0.2 and creates no passwordless sudoers rule or raw-socket capability.
+Installation needs root; starting and scanning do not. Current packages create no passwordless sudoers rule or raw-socket capability. Upgrades from 1.0.2 remove its legacy `/etc/sudoers.d/sadp-gui-routing` rule.
 
 The installer sets only `net.ipv4.conf.all.rp_filter=2` and `net.ipv4.conf.default.rp_filter=2` in `/etc/sysctl.d/60-hikvision-sadp.conf`. Original runtime values are recorded in `/var/lib/hikvision-sadp/network-state.json` and retained across upgrades. These are system-wide reverse-path-filter settings; they allow asymmetric replies while retaining loose reverse-path validation.
 
