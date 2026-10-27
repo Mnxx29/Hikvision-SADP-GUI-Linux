@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.5 — 2026-10-27
+
+- Show each device as its SADP response arrives instead of waiting for the scan timeout; keep one row per MAC.
+- Apply the active filter to newly discovered rows and update the count during the scan.
+- Open a device's web interface immediately when its IP is double-clicked, without a confirmation dialog.
+
 ## 1.0.4 — 2026-10-21
 
 - Introduce a charcoal and red workspace with a branded header, separate device actions and alternating table rows.

@@ -61,6 +61,26 @@ class GuiTests(unittest.TestCase):
         self.assertFalse(self.window.tabla.item(0, 2).flags() & Qt.ItemFlag.ItemIsEditable)
         self.assertTrue(self.window.tabla.item(0, 3).flags() & Qt.ItemFlag.ItemIsEditable)
 
+    def test_incremental_results_show_and_filter_before_scan_finishes(self):
+        second = dict(DEVICE, ip='192.168.1.65', mac='aa:bb:cc:dd:ee:00')
+        self.window.txt_filter.setText('192.168.1.64')
+        self.window.mostrar_dispositivos([dict(DEVICE), second])
+        self.assertEqual(self.window.tabla.rowCount(), 2)
+        self.assertEqual(len(self.window.dispositivos), 2)
+        self.assertIn('2', self.window.lbl_count.text())
+        visible_ips = [self.window.tabla.item(row, 1).text()
+                       for row in range(self.window.tabla.rowCount())
+                       if not self.window.tabla.isRowHidden(row)]
+        self.assertEqual(visible_ips, [DEVICE['ip']])
+
+    def test_double_click_ip_opens_default_browser_without_prompt(self):
+        with patch('gui_sadp.webbrowser.open', return_value=True) as browser, \
+                patch('gui_sadp.QMessageBox.question') as question:
+            self.window.doble_clic_celda(0, 1)
+            self.window.doble_clic_celda(0, 2)
+            browser.assert_called_once_with('http://192.168.1.64')
+            question.assert_not_called()
+
     def test_csv_keeps_serial_and_quotes_user_model(self):
         with tempfile.TemporaryDirectory() as folder:
             target = str(pathlib.Path(folder) / 'devices.csv')
@@ -130,6 +150,19 @@ class GuiTests(unittest.TestCase):
 
 
 class WorkerTests(unittest.TestCase):
+    def test_worker_emits_each_device_before_final_list(self):
+        worker = ScanThread()
+        events = []
+        worker.device_found.connect(lambda device: events.append(('found', device['mac'])))
+        worker.devices.connect(lambda devices: events.append(('complete', len(devices))))
+        def discover(*, timeout, debug, on_device):
+            on_device(dict(DEVICE))
+            self.assertEqual(events, [('found', DEVICE['mac'])])
+            return [dict(DEVICE)]
+        with patch('sadp_discover.discover', side_effect=discover):
+            worker.run()
+        self.assertEqual(events, [('found', DEVICE['mac']), ('complete', 1)])
+
     def test_empty_native_scan_does_not_fall_back_or_report_an_error(self):
         worker = ScanThread()
         devices, errors = [], []

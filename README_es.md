@@ -2,7 +2,7 @@
 
 [English](README.md) | **Español**
 
-Descubrimiento nativo de dispositivos compatibles con Hikvision mediante Python y PyQt6. La interfaz permite filtrar y ordenar resultados, guardar etiquetas de modelo locales y exportar CSV con números de serie.
+Descubrimiento nativo de dispositivos compatibles con Hikvision mediante Python y PyQt6. Los equipos aparecen a medida que responden y un doble clic en la IP abre su interfaz web en el navegador predeterminado. La interfaz permite filtrar y ordenar resultados, guardar etiquetas de modelo locales y exportar CSV con números de serie.
 
 ![Aplicación](docs/GUI.png)
 
@@ -21,7 +21,7 @@ La interfaz usa una identidad propia en carbón y rojo. Cambia el idioma desde `
 Descarga el `.deb` desde [Releases](https://github.com/Mnxx29/Hikvision-SADP-GUI-Linux/releases):
 
 ```bash
-sudo apt install ./hikvision-sadp-gui_1.0.4_amd64.deb
+sudo apt install ./hikvision-sadp-gui_1.0.5_amd64.deb
 sadp-gui
 ```
 
@@ -75,7 +75,7 @@ python3 sadp_discover.py --timeout 6 --csv > devices.csv
 
 El diagnóstico inspecciona la configuración y envía sondas de descubrimiento; no modifica rutas, firewall ni kernel. La salida CSV es procesable directamente; con `--csv`, la depuración va a stderr.
 
-Consulta [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md) y las [notas de validación](docs/validation-1.0.3.md).
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md) y las [notas de validación](docs/validation-1.0.5.md).
 
 ## Descargo y licencia
 

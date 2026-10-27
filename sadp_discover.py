@@ -185,7 +185,7 @@ def parse_response(data, addr, debug=False):
         return None
 
 
-def discover(timeout=10, debug=False):
+def discover(timeout=10, debug=False, on_device=None):
     """
     Descubre dispositivos Hikvision en la red local usando el protocolo SADP nativo.
 
@@ -198,6 +198,7 @@ def discover(timeout=10, debug=False):
     Args:
         timeout: Tiempo máximo de espera en segundos (default: 10).
         debug: Si True, imprime información de depuración.
+        on_device: Callback opcional llamado al recibir cada MAC nueva.
 
     Returns:
         Lista de diccionarios, uno por cada dispositivo descubierto.
@@ -320,6 +321,8 @@ def discover(timeout=10, debug=False):
                     mac_key = device['mac'].lower().replace(':', '').replace('-', '')
                     if mac_key not in devices:
                         devices[mac_key] = device
+                        if on_device is not None:
+                            on_device(device)
             except Exception as e:
                 if debug:
                     print(f"[SADP] Error recibiendo: {e}")

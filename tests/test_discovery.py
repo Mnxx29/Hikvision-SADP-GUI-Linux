@@ -35,6 +35,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_duplicate_mac_formats_produce_one_device(self):
         packets = iter([(PACKET, ADDRESS), (PACKET.replace(b'aa-bb-cc-dd-ee-ff', b'AA:BB:CC:DD:EE:FF'), ADDRESS)])
         clock = iter([0, 0, 0, .1, .2, .3, 2])
+        arrivals = []
         with patch('sadp_discover.socket.socket') as factory, \
                 patch('sadp_discover.get_interface_ips', return_value=['192.168.10.178']), \
                 patch('sadp_discover.get_broadcast_addrs', return_value=[]), \
@@ -42,5 +43,6 @@ class DiscoveryTests(unittest.TestCase):
                 patch('sadp_discover.select.select', side_effect=lambda *args: ([factory.return_value], [], [])):
             factory.return_value.__enter__.return_value = factory.return_value
             factory.return_value.recvfrom.side_effect = lambda *args: next(packets)
-            self.assertEqual(len(discover(timeout=1)), 1)
+            self.assertEqual(len(discover(timeout=1, on_device=arrivals.append)), 1)
+            self.assertEqual([device['ip'] for device in arrivals], [ADDRESS[0]])
             factory.return_value.__exit__.assert_called_once()

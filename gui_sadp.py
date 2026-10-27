@@ -4,6 +4,7 @@ import csv
 import tempfile
 import xml.etree.ElementTree as ET
 import webbrowser
+import ipaddress
 import os
 import shutil
 from xml.sax.saxutils import escape
@@ -134,6 +135,7 @@ class ScanThread(QThread):
     """Scan without privileges; a successful empty scan is a normal result."""
     error = pyqtSignal(str)
     devices = pyqtSignal(list)
+    device_found = pyqtSignal(dict)
 
     def __init__(self, lang='en'):
         super().__init__()
@@ -143,7 +145,7 @@ class ScanThread(QThread):
         try:
             from sadp_discover import discover
             try:
-                devices = discover(timeout=12, debug=False)
+                devices = discover(timeout=12, debug=False, on_device=self.device_found.emit)
             except Exception as native_error:
                 print(f'[SADP] Native discovery failed: {native_error}; trying the helper')
                 devices = self._fallback()
@@ -780,24 +782,33 @@ class SADPGui(QMainWindow):
         self.btn_modify.setEnabled(False)
         
         self.scan_thread = ScanThread(self.current_lang)
+        self.scan_thread.device_found.connect(lambda device: self.mostrar_dispositivos([device]))
         self.scan_thread.devices.connect(self.mostrar_dispositivos)
         self.scan_thread.error.connect(self.mostrar_error)
         self.scan_thread.finished.connect(self.escaneo_finalizado)
         self.scan_thread.start()
 
     def mostrar_dispositivos(self, dispositivos):
-        """Muestra los dispositivos en la tabla"""
-        self.dispositivos = dispositivos
-        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#C83B46; font-size:16px;'>{len(dispositivos)}</b>")
+        """Agrega respuestas nuevas sin esperar el fin del escaneo ni repetir MACs."""
+        conocidas = {normalize_mac(disp.get('mac', '')) for disp in self.dispositivos}
+        nuevos = []
+        for disp in dispositivos:
+            mac = normalize_mac(disp.get('mac', ''))
+            if mac and mac not in conocidas:
+                conocidas.add(mac)
+                self.dispositivos.append(disp)
+                nuevos.append(disp)
+        self.lbl_count.setText(f"{self.t('total_devices')} <b style='color:#C83B46; font-size:16px;'>{len(self.dispositivos)}</b>")
         
-        if not dispositivos:
-            self.status_label.setText(self.t("no_devices"))
+        if not nuevos:
+            if not self.dispositivos:
+                self.status_label.setText(self.t("no_devices"))
             return
         
         # Desactivar señales y ordenación mientras se insertan filas
         self.tabla.blockSignals(True)
         self.tabla.setSortingEnabled(False)
-        for idx, disp in enumerate(dispositivos):
+        for disp in nuevos:
             row_position = self.tabla.rowCount()
             self.tabla.insertRow(row_position)
             
@@ -853,7 +864,8 @@ class SADPGui(QMainWindow):
         # Volver a activar señales y ordenación después de insertar todas las filas
         self.tabla.blockSignals(False)
         self.tabla.setSortingEnabled(True)
-        self.status_label.setText(self.t("found_devices", count=len(dispositivos)))
+        self.filtrar_tabla(self.txt_filter.text())
+        self.status_label.setText(self.t("found_devices", count=len(self.dispositivos)))
 
     def save_header_state(self, *args):
         try:
@@ -1021,18 +1033,13 @@ class SADPGui(QMainWindow):
             item_ip = self.tabla.item(row, column)
             if item_ip:
                 ip = item_ip.text()
+                try:
+                    ipaddress.IPv4Address(ip)
+                except ipaddress.AddressValueError:
+                    return
                 url = f"http://{ip}"
-                
-                respuesta = QMessageBox.question(
-                    self,
-                    self.t("open_browser_title"),
-                    self.t("open_browser_msg", ip=ip),
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                
-                if respuesta == QMessageBox.StandardButton.Yes:
-                    webbrowser.open(url)
-                    self.status_label.setText(self.t("opening_browser", url=url))
+                webbrowser.open(url)
+                self.status_label.setText(self.t("opening_browser", url=url))
 
     def filtrar_tabla(self, texto):
         """Filtra en tiempo real los dispositivos mostrados según el texto de búsqueda"""

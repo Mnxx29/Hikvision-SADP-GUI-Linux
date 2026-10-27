@@ -66,8 +66,6 @@ TRANSLATIONS = {
         # Dialogs & Prompts
         "scan_in_progress_title": "Scan in Progress",
         "scan_in_progress_msg": "A scan is already in progress.",
-        "open_browser_title": "Open in Browser",
-        "open_browser_msg": "Do you want to open the web interface for {ip}?",
         "no_data_title": "No Data",
         "no_data_msg": "There are no devices to export.",
         "export_dialog_title": "Export Hikvision Device List",
@@ -194,8 +192,6 @@ TRANSLATIONS = {
         # Dialogs & Prompts
         "scan_in_progress_title": "Escaneo en curso",
         "scan_in_progress_msg": "Ya hay un escaneo en progreso.",
-        "open_browser_title": "Abrir en navegador",
-        "open_browser_msg": "¿Deseas abrir la interfaz web de {ip}?",
         "no_data_title": "No hay datos",
         "no_data_msg": "No hay dispositivos para exportar.",
         "export_dialog_title": "Exportar lista de dispositivos Hikvision",
